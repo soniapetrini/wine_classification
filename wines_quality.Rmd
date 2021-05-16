@@ -1,6 +1,6 @@
 ---
 title: "wine_quality"
-author: "Elisabetta Rocchetti"
+author: "Sonia Petrini"
 date: "15/5/2021"
 output: html_document
 ---
