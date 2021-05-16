@@ -1,4 +1,4 @@
-- comparison btw balanced and unbalanced
-- try to resample white wines and try bagging
-- try with different threshold for prediction
-- remove not significant variable and test accuracy, variance, bias
+- comparison btw balanced and unbalanced - LUCA
+- try to resample white wines and try bagging - SERAFINA
+- try with different threshold for prediction - hyperparameter tuning - SONIA
+- remove not significant variable and test accuracy, variance, bias - SARA
