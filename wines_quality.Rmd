@@ -1,0 +1,282 @@
+---
+title: "wine_quality"
+author: "Elisabetta Rocchetti"
+date: "15/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+library(ggplot2)
+```
+
+# Data
+
+The dataset **white_wines.csv** stores data about physicochemical properties of many wines which come from the north-west region, named Minho, of Portugal.
+
+Each row refers to a wine and each column contains one of the physicochemical properties with respect to wines. Here we list the properties:
+
+- fixed acidity (FA: g(tartaric acid)/dm^3)
+- volatile acidity (VA: g(acetic acid)/dm^3)
+- citric acid (CA: g/dm^3)
+- residual sugar (RS: g/dm^3)
+- chlorides (CH: g(sodium chloride)/dm^3)
+- free sulfur dioxide (FSD: mg/dm^3)
+- total sulfur dioxide (TSD: mg/dm^3)
+- density (DE: g/dm^3)
+- pH
+- sulphates (SU: g(potassium sulphate)/dm^3)
+- alcohol (AL: %vol)
+- quality (from 0 to 10)
+
+Our aim will be to classify white wines according to their quality, labelling them as "low" if 
+their quality score is from 0 to 5, and as "high" if the score is between 6 and 10.
+
+
+## Load the dataset
+
+```{r, message=FALSE, warning = FALSE}
+wwines <- read.csv("winequality-white.csv", sep=";")
+print("White wines")
+str(wwines)
+
+```
+
+Now we inspect the variables we have and we transform them if necessary.
+
+## Data preparation
+
+First, we define our target variable
+
+```{r, message=FALSE, warning = FALSE}
+wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
+                                      wwines$quality > 5 ~ "high"))
+table(wwines$quality)
+```
+
+
+## Data description
+
+### boxplots
+```{r, message=FALSE, warning = FALSE}
+summary(wwines)
+boxplot(wwines$fixed.acidity ~ wwines$quality)
+boxplot(wwines$volatile.acidity ~ wwines$quality)
+boxplot(wwines$citric.acid ~ wwines$quality)
+boxplot(wwines$residual.sugar ~ wwines$quality)
+boxplot(wwines$chlorides ~ wwines$quality)
+boxplot(wwines$free.sulfur.dioxide ~ wwines$quality)
+boxplot(wwines$total.sulfur.dioxide ~ wwines$quality)
+boxplot(wwines$density ~ wwines$quality)
+boxplot(wwines$pH ~ wwines$quality)
+boxplot(wwines$sulphates ~ wwines$quality)
+boxplot(wwines$alcohol ~ wwines$quality)
+
+```
+
+### histograms
+```{r}
+h1 <- ggplot(wwines, aes(fixed.acidity, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h2 <- ggplot(wwines, aes(volatile.acidity, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h3 <- ggplot(wwines, aes(citric.acid, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h4 <- ggplot(wwines, aes(residual.sugar, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+grid.arrange(h1,h2,h3,h4, ncol=1)
+
+```
+
+```{r}
+h1 <- ggplot(wwines, aes(chlorides, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h2 <- ggplot(wwines, aes(free.sulfur.dioxide, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h3 <- ggplot(wwines, aes(total.sulfur.dioxide, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h4 <- ggplot(wwines, aes(density, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+grid.arrange(h1,h2,h3,h4, ncol=1)
+```
+
+```{r}
+h1 <- ggplot(wwines, aes(pH, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h2 <- ggplot(wwines, aes(sulphates, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+h3 <- ggplot(wwines, aes(alcohol, color = quality))+
+  geom_freqpoly(binwidth = 3, size = 1)
+
+
+grid.arrange(h1,h2,h3, ncol=1)
+```
+
+# Divide the dataset in training and test
+
+```{r}
+set.seed(42)
+split_train_test <- createDataPartition(wwines$quality,p=0.7,list=FALSE)
+dtrain<- wwines[split_train_test,]
+dtest<-  wwines[-split_train_test,]
+```
+
+# Logistic regression
+
+```{r, message=FALSE, warning=FALSE}
+lr_fit <- glm(quality ~., data = dtrain,
+          family=binomial(link='logit'))
+summary(lr_fit)
+```
+
+## Odds ratios
+```{r, warning=FALSE}
+exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
+```
+
+# Removing non significant variables from our model.
+```{r}
+lr_fit_sig <- glm(quality ~volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, data = dtrain,
+          family=binomial(link='logit'))
+summary(lr_fit_sig)
+```
+ 
+## odds ratios
+```{r}
+exp(cbind(OR = coef(lr_fit_sig), confint(lr_fit_sig)))
+```
+
+
+**Optimizing threshold - training set - complete model**
+```{r}
+lr_prob <- predict(lr_fit, dtrain, type="response")
+lr_preds_train <- list()
+i<-1
+for (thresh in seq(0.25,0.75,0.05)){
+  lr_pred <- ifelse(lr_prob > thresh,"low","high")
+  cm <- confusionMatrix(
+          as.factor(lr_pred),
+          dtrain$quality,
+          positive = "low"
+          )
+  lr_preds_train[i] <- cm$overall[[1]]
+  i<-i+1
+}
+names(lr_preds_train) <- seq(0.25,0.75,0.05)
+best <- max(unlist(lapply(lr_preds_train,FUN=max)))
+names(best) <- seq(0.25,0.75,0.05)[which.max(unlist(lapply(lr_preds_train,FUN=max)))]
+best
+#table(Predicted = lr_pred1, Actual = dtest$type)
+
+```
+
+**Optimizing threshold - training set - restricted model**
+```{r}
+lr_prob_sig <- predict(lr_fit_sig, dtrain, type="response")
+lr_preds_sig <- list()
+i<-1
+for (thresh in seq(0.25,0.75,0.05)){
+  lr_pred <- ifelse(lr_prob_sig > thresh,"low","high")
+  cm <- confusionMatrix(
+          as.factor(lr_pred),
+          dtrain$quality,
+          positive = "low"
+          )
+  lr_preds_sig[i] <- cm$overall[[1]]
+  i<-i+1
+}
+names(lr_preds_sig) <- seq(0.25,0.75,0.05)
+best <- max(unlist(lapply(lr_preds_sig,FUN=max)))
+names(best) <- seq(0.25,0.75,0.05)[which.max(unlist(lapply(lr_preds_sig,FUN=max)))]
+best
+#table(Predicted = lr_pred1, Actual = dtest$type)
+
+```
+
+## Confusion matrices
+```{r}
+# complete model
+lr_prob <- predict(lr_fit, dtrain, type="response")
+lr_pred <- ifelse(lr_prob > 0.4,"low","high")
+table(Predicted = lr_pred, Actual = dtrain$quality)
+
+# restricted model
+lr_prob_sig <- predict(lr_fit_sig, dtrain, type="response")
+lr_pred_sig <- ifelse(lr_prob > 0.4,"low","high")
+table(Predicted = lr_pred_sig, Actual = dtrain$quality)
+
+# Train (restricted)
+confusionMatrix(
+  as.factor(lr_pred),
+  dtrain$quality,
+  positive = "low"
+)
+
+lr_prob_sig_test <- predict(lr_fit_sig, dtest, type="response")
+lr_pred_sig_test <- ifelse(lr_prob_sig_test > 0.4,"low","high")
+
+# Test (restricted)
+confusionMatrix(
+  as.factor(lr_pred_sig_test),
+  dtest$quality,
+  positive = "low"
+)
+```
+
+# ROC Curve
+
+```{r, message=FALSE, warning=FALSE}
+library(pROC)
+test_roc = roc(dtest$quality ~ lr_prob_sig_test, plot = TRUE, print.auc = TRUE)
+as.numeric(test_roc$auc)
+```
+# Relation with residual.sugar 
+
+```{r}
+ggplot(wwines, aes(x = residual.sugar, fill = quality)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Residual sugar",
+       title = "Wine type by residual sugar")+
+  xlim(0,25)
+
+```
+
+# Relation with chlorides
+
+```{r}
+ggplot(wines, aes(x = chlorides, fill = type)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Residual sugar",
+       title = "Wine type by chlorides")
+
+```
+# Relation with total.sulfur.dioxide
+
+```{r}
+ggplot(wines, aes(x = total.sulfur.dioxide, fill = type)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Residual sugar",
+       title = "Wine type by total.sulfur.dioxide")
+
+```
+# Relation with alcohol 
+
+```{r}
+ggplot(wines, aes(x = alcohol , fill = type)) +
+  geom_histogram(binwidth = 1) +
+  labs(x = "Residual sugar",
+       title = "Wine type by alcohol")
+
+```
