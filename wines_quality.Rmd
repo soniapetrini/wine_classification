@@ -1,6 +1,6 @@
 ---
 title: "wine_quality"
-author: "Sonia Petrini"
+author: "LJSSE"
 date: "19/5/2021"
 output: html_document
 ---
