@@ -1,4 +1,12 @@
 - comparison btw balanced and unbalanced - LUCA
+    closed
 - try to resample white wines and try bagging - SERAFINA
+    closed
 - try with different threshold for prediction - hyperparameter tuning - SONIA
+    closed
 - remove not significant variable and test accuracy, variance, bias - SARA
+    to do 
+
+new:
+- add echo=FALSE where we don't want to print the code that generates the plot
+- subset selection
