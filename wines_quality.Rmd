@@ -225,10 +225,8 @@ cm <- confusionMatrix(as.factor(lr_pred),
 cm
 ```
 
-## Restricted model
-Removing non significant variables from our model.
-Only including: volatile.acidity, residual.sugar, free.sulfur.dioxide, density, 
-pH, sulphates, alcohol
+## Model selection
+
 ```{r}
 lr_fit_sig <- glm(quality ~volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, data = dtrain,
           family=binomial(link='logit'))
@@ -244,15 +242,64 @@ exp(cbind(OR = coef(lr_fit_sig), confint(lr_fit_sig)))
 ggpairs(wwines, columns = c(2, 4, 6, 8, 
 9, 10, 11), ggplot2::aes(colour=quality))
 ```
+### vif
+```{r}
+vif(lr_fit)
+sqrt(vif(lr_fit))>2 # residual.sugar, density, alcohol
+```
+
+### Best Subset regression
+```{r}
+library(leaps)
+regfit.full=regsubsets(quality~.,data=wwines, nvmax=13)
+reg.summary=summary(regfit.full)
+names(reg.summary)
+
+plot(reg.summary$bic,xlab="Number of Variables",ylab="bic")
+points(which.min(reg.summary$bic),reg.summary$bic[which.min(reg.summary$bic)],pch=20,col="red")
+
+```
+
+```{r}
+plot(regfit.full,scale="bic")
+grid(nx=12,ny=11,col="red",lty = "solid")
+```
+
+### Forward Stepwise
+```{r}
+regfit.fwd=regsubsets(quality~.,data=wwines,method="forward", nvmax=13)
+summary(regfit.fwd)
+
+```
+
+```{r}
+plot(regfit.fwd,scale="bic")
+grid(nx=12,ny=11,col="red",lty = "solid")
+```
+
+## Restricted model
+Only including: volatile.acidity, residual.sugar, free.sulfur.dioxide, density, 
+pH, sulphates, alcohol
+```{r}
+lr_fit_sig <- glm(quality ~volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, data = dtrain,
+          family=binomial(link='logit'))
+
+# coefficients
+summary(lr_fit_sig)
+
+# odds ratios
+exp(cbind(OR = coef(lr_fit_sig), confint(lr_fit_sig)))
+```
 
 
 ## DETECTING OUTLIERS
 ```{r, warning=FALSE}
-influenceIndexPlot(lr_fit, id.n=10)
-a<-dffits(lr_fit)
-threshold<-(2*(11+1)/sqrt(4898-11-1))
-which(abs(a)>threshold)
-dtrain["outlier"]<-ifelse(rownames(dtrain) %in% c(2783,3902,4746,1971,2732,3323,4481,3737),0,1)
+influenceIndexPlot(lr_fit, id.n=10)  # 2782, 4746
+a<-dffits(lr_fit) 
+threshold<-(2*(11+1)/sqrt(3429-11-1))  
+which(abs(a)>threshold) # 2782, 1971
+outliers <- c(1971, 2782, 4746,4481,3737)
+dtrain["outlier"] <- ifelse(rownames(dtrain) %in% outliers,0,1)
 residualPlots(lr_fit, id = TRUE,  col = as.factor(dtrain$outlier))
 ```
 
@@ -260,8 +307,7 @@ residualPlots(lr_fit, id = TRUE,  col = as.factor(dtrain$outlier))
 ## Outliers free model
 ```{r}
 dtrain$outlier<- NULL
-outlier <- c(2783,3902,4746,1971,2732,3323,4481,3737)
-dtrain_outlierfree <- dtrain[-outlier,]
+dtrain_outlierfree <- dtrain[-outliers,]
 lr_fit_outlierfree <- glm(quality ~., data = dtrain_outlierfree,
                           family=binomial(link='logit'))
 
