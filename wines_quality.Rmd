@@ -61,6 +61,7 @@ Now we inspect the variables we have and we transform them if necessary.
 ```{r, message=FALSE, warning = FALSE}
 wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
                                       wwines$quality > 5 ~ "high"))
+wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 table(wwines$quality)
 
 ```
@@ -196,7 +197,6 @@ for (thresh in thresholds) {
     i<-i+1
 }
 
-
 measures <- data.frame(thresholds,
                        "accuracy" =unlist(accuracy), 
                        "sensitivity" =unlist(sensitivity),
@@ -216,32 +216,26 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 
 ### complete model test performance 
 ```{r}
-lr_prob <- predict(lr_fit, dtest, type="response")
-lr_pred <- ifelse(lr_prob > 0.355,"low","high")
-cm <- confusionMatrix(as.factor(lr_pred),
-                      dtest$quality,
-                      positive = "low"
-                      )
+# define new task for dtest
+task_test = TaskClassif$new(id = "wines_test", dtest, target = "quality", positive = "low")
+# train on train task
+learner_train$train(task_train)
+# predict on test task
+pred <- learner_train$predict(task_test)
+# set optimal threshold
+pred$set_threshold(0.355)
+# performance
+cm <- list("confusion" = pred$confusion,
+          "accuracy" = pred$score(measures = msr("classif.acc")),
+          "sensitivity"=pred$score(measures = msr("classif.sensitivity")),
+          "specificity"=pred$score(measures = msr("classif.specificity")))
 cm
+
+
 ```
 
 ## Model selection
 
-```{r}
-lr_fit_sig <- glm(quality ~volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, data = dtrain,
-          family=binomial(link='logit'))
-
-# coefficients
-summary(lr_fit_sig)
-
-# odds ratios
-exp(cbind(OR = coef(lr_fit_sig), confint(lr_fit_sig)))
-```
- 
-```{r}
-ggpairs(wwines, columns = c(2, 4, 6, 8, 
-9, 10, 11), ggplot2::aes(colour=quality))
-```
 ### vif
 ```{r}
 vif(lr_fit)
@@ -277,11 +271,12 @@ plot(regfit.fwd,scale="bic")
 grid(nx=12,ny=11,col="red",lty = "solid")
 ```
 
+
 ## Restricted model
 Only including: volatile.acidity, residual.sugar, free.sulfur.dioxide, density, 
 pH, sulphates, alcohol
 ```{r}
-lr_fit_sig <- glm(quality ~volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, data = dtrain,
+lr_fit_sig <- glm(quality ~ volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, data = dtrain,
           family=binomial(link='logit'))
 
 # coefficients
