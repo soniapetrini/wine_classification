@@ -405,7 +405,7 @@ outliers <-
   select(.rownames)
 
 dtrain["outlier"] <- ifelse(rownames(dtrain) %in% outliers$.rownames,0,1)
-residualPlots(lr_fit,  col = as.factor(dtrain$outlier))
+residualPlots(lr_fit, id = TRUE, col = as.factor(dtrain$outlier), ask = FALSE)
 ```
 
 
@@ -488,11 +488,11 @@ S4 <- sample(n, nrow(dtrain), replace = TRUE)
 lr_b <- function(i){
       lr_f <- glm(quality ~ volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, 
                   data = dtrain[i, ],family=binomial(link='logit'))
-      lr_prob <- predict(lr_f,dtest[i,], type="response")
+      lr_prob <- predict(lr_f,dtrain[i,], type="response")
       lr_pred <- ifelse(lr_prob > 0.355,"low","high")
       cm <- confusionMatrix(
                 as.factor(lr_pred),
-                dtest[i,]$quality,
+                dtrain[i,]$quality,
                 positive = "low"
                 )
       a <- cm$overall[[1]]
