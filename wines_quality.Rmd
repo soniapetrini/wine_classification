@@ -78,7 +78,6 @@ corrplot(cors, type = "upper",
 
 ```
 We have to worry about two correlations: residual.sugar with density and density with alcohol.
-We decide to remove density, as this will solve both the correlation issues, and we can see from the histograms below that the distribution of density does not depend on quality, while the shape of the residual.sugar and alcohol curves changes for low and high quality wines.
 
 ### Histograms
 ```{r}
@@ -94,15 +93,16 @@ h3 <- ggplot(wwines, aes(density, color = quality))+
 grid.arrange(h1,h2,h3, ncol=1)
 
 ```
+We decide to remove density, as this will solve both the correlation issues, and we can see from the histograms below that the distribution of density does not depend on quality, while the shape of the residual.sugar and alcohol curves changes for low and high quality wines.
 
 ```{r}
 wwines$density <- NULL
 ```
 
 ### Correlation with target variable
-```{r}
+```{r, warning=FALSE}
 library(ltm)
-for (i in 1:length(wwines)) {
+for (i in 1:length(wwines[,-11])) {
   print(paste(colnames(wwines)[i],biserial.cor(wwines[,i],wwines$quality),sep = " "))
 }
 ```
@@ -118,7 +118,6 @@ boxplot(wwines$residual.sugar ~ wwines$quality)
 boxplot(wwines$chlorides ~ wwines$quality)
 boxplot(wwines$free.sulfur.dioxide ~ wwines$quality)
 boxplot(wwines$total.sulfur.dioxide ~ wwines$quality)
-boxplot(wwines$density ~ wwines$quality)
 boxplot(wwines$pH ~ wwines$quality)
 boxplot(wwines$sulphates ~ wwines$quality)
 boxplot(wwines$alcohol ~ wwines$quality)
@@ -126,8 +125,6 @@ boxplot(wwines$alcohol ~ wwines$quality)
 ```
 
 Thanks to these plots we can suspect which variables will be significant to perform out regression. Here none of the variables seems to be too different comparing the two subsets (high and low quality).
-
-
 
 
 ###########################################################################
@@ -176,9 +173,6 @@ We find this variable which is significant at 90% confidence level:
 
 ```{r}
 #here we use mlr3 package
-#install_learners('classif.log_reg')
-#mlr_learners$get("classif.log_reg")
-
 #defining our task: classification on wines with quality as response variable and low quality as baseline
 task_train = TaskClassif$new(id = "wines",  wwines[train_indices,], target = "quality", positive = "low")
 #defining the learner which will perform the training procedure on our model
@@ -230,7 +224,7 @@ Since the choice of the threshold depends on the aim of the analysis, we decided
 
 ### Complete model test performance 
 ```{r}
-# define new task for  wwines[-train_indices,]
+# define new task for test set
 task_test = TaskClassif$new(id = "wines_test",  wwines[-train_indices,], target = "quality", positive = "low")
 # train on train task
 learner_train$train(task_train)
@@ -263,6 +257,7 @@ Residual sugar, density and alcohol are the most influenced by their interaction
 
 ### Forward Stepwise method
 ```{r}
+library(leaps)
 regfit.fwd=regsubsets(quality~.,data=wwines,method="forward", nvmax=13)
 summary.fwd <- summary(regfit.fwd)
 
@@ -319,8 +314,8 @@ We find these variable which are significant at 90% confidence level:
 ```{r, warning=FALSE}
 #unrestricted model performance
 unrestr_probs <- predict(lr_fit,  wwines[-train_indices,], type="response")
-unrestr_preds <- ifelse(unrestr_probs > 0.355,"low","high")
-unrestr_cm <- confusionMatrix(as.factor(unrestr_preds),
+unrestr_preds <- ifelse(unrestr_probs < 0.355,"low","high")
+unrestr_cm <- confusionMatrix(factor(unrestr_preds,levels=c("high","low")),
                          wwines[-train_indices,]$quality,
                         positive = "low"
                         )
@@ -328,9 +323,8 @@ unrestr_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrest
 
 #restricted model performance
 restr_probs <- predict(lr_fit_res,  wwines[-train_indices,], type="response")
-restr_preds <- ifelse(restr_probs > 0.355,"low","high")
-restr_cm <- confusionMatrix(as.factor(restr_preds),
-                         wwines[-train_indices,]$quality,
+restr_preds <- ifelse(restr_probs < 0.355,"low","high")
+restr_cm <- confusionMatrix(factor(restr_preds,levels=c("high","low")),                         wwines[-train_indices,]$quality,
                         positive = "low"
                         )
 restr_performance <- list(restr_cm$overall[1], restr_cm$byClass[1], restr_cm$byClass[2])
