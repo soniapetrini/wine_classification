@@ -102,6 +102,7 @@ wwines$density <- NULL
 ### Correlation with target variable
 ```{r, warning=FALSE}
 library(ltm)
+library(MASS)
 for (i in 1:length(wwines[,-11])) {
   print(paste(colnames(wwines)[i],biserial.cor(wwines[,i],wwines$quality),sep = " "))
 }
