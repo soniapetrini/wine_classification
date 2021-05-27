@@ -12,9 +12,9 @@
     - how we choose it (Luca)
 - performance on test
 
-## model selection (Serafina)
-- vif
-- forward stepwise method
+## model selection
+- vif (Serafina)
+- forward stepwise method (Serafina)
 
 ## restricted model
 - logistic regression
@@ -30,7 +30,7 @@
 - performance on test
 - ROC curve
 
-## bagging (Serafina)
-- resulting improved performance
+## bagging 
+- resulting improved performance (Serafina)
 
 
