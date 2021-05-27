@@ -21,6 +21,9 @@ library(corrplot)
 library(gridExtra)
 library(GGally)
 library(car)
+library(broom)
+library(ltm)
+library(MASS)
 ```
 
 ################################################################################
@@ -63,7 +66,6 @@ wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
                                       wwines$quality > 5 ~ "high"))
 wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 table(wwines$quality)
-
 ```
 
 
@@ -100,32 +102,31 @@ wwines$density <- NULL
 ```
 
 ### Correlation with target variable
-```{r, warning=FALSE}
-library(ltm)
-library(MASS)
-for (i in 1:length(wwines[,-11])) {
-  print(paste(colnames(wwines)[i],biserial.cor(wwines[,i],wwines$quality),sep = " "))
-}
+```{r, warning=FALSE, message=FALSE}
+bicorrs <- sapply(wwines[,-11], function(x) round(biserial.cor(x,wwines$quality),2))
+data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
-
+Here the correlations are displayed in ascending absolute value, and we can see that the variable showing the highest correlation with wines' quality is alcohol.
+The sign is positive, meaning that as alcohol increases the quality of wine also increases.
 
 ### Boxplots
 ```{r, message=FALSE, warning = FALSE}
 summary(wwines)
-boxplot(wwines$fixed.acidity ~ wwines$quality)
-boxplot(wwines$volatile.acidity ~ wwines$quality)
-boxplot(wwines$citric.acid ~ wwines$quality)
-boxplot(wwines$residual.sugar ~ wwines$quality)
-boxplot(wwines$chlorides ~ wwines$quality)
-boxplot(wwines$free.sulfur.dioxide ~ wwines$quality)
-boxplot(wwines$total.sulfur.dioxide ~ wwines$quality)
-boxplot(wwines$pH ~ wwines$quality)
-boxplot(wwines$sulphates ~ wwines$quality)
-boxplot(wwines$alcohol ~ wwines$quality)
+# melt the dataset
+wwines.m <- melt(wwines, id.var = "quality")
 
+# wrapped boxplots
+ggplot(data = wwines.m, aes(x=variable, y=value)) +
+geom_boxplot(aes(fill=quality)) +
+facet_wrap( ~ variable, scales="free")
 ```
 
-Thanks to these plots we can suspect which variables will be significant to perform out regression. Here none of the variables seems to be too different comparing the two subsets (high and low quality).
+
+These plots allow us to get a first impression about which variables will be significant for the regression.
+
+We can observe the following:
+- The features displaying the highest median difference between high and low quality wines are volatile.acidity, total.sulfur.dioxide, pH, alcohol.
+- There are some outlying values. We will deal with them in the section below.
 
 
 ###########################################################################
@@ -142,7 +143,7 @@ train_indices<- createDataPartition(wwines$quality,p=0.7,list=FALSE)
 ## Complete model: all variables are included
 
 Estimated coefficients and Odds Ratios.
-The baseline for the regression is "high", because positive: "low" 
+The baseline for the regression is "low", because positive: "high" 
 
 ```{r, message=FALSE, warning=FALSE}
 lr_fit <- glm(quality ~., data =  wwines[train_indices,],
@@ -353,9 +354,9 @@ From the first plot we identify as outliers instances number 2782 and 4481 (see 
 
 ## Detecting outliers using unrestricted model (second)
 ```{r, warning=FALSE}
-library(broom)
+
 #dffits threshold
-threshold<-(2*(ncol( wwines[train_indices,])+1)/sqrt(nrow( wwines[train_indices,])-ncol( wwines[train_indices,])-1))  
+threshold<-(2*(ncol( wwines[train_indices,])+1)/sqrt(nrow(wwines[train_indices,])-ncol(wwines[train_indices,])-1))  
 d <- dffits(lr_fit)
 #another way to get cook's distance
 #cooks distance threshold: https://www.scikit-yb.org/en/latest/api/regressor/influence.html#:~:text=Because%20of%20this%2C%20Cook's%20Distance,that%20is%20above%20that%20threshold.
@@ -363,19 +364,19 @@ plot(lr_fit, which = 4, id.n = 3)
 outliers <- 
   augment(lr_fit) %>%
   mutate(df = unname(dffits(lr_fit)))%>%
-  filter(.cooksd > 4/nrow( wwines[train_indices,]) | abs(df)>threshold) %>%
-  select(.rownames)
+  filter(.cooksd > 4/nrow( wwines[train_indices,]) |abs(df)>threshold)
+#%>%  select(.rownames)
 
- wwines[train_indices,]["outlier"] <- ifelse(rownames( wwines[train_indices,]) %in% outliers$.rownames,0,1)
+wwines[train_indices,]["outlier"] <- ifelse(rownames(wwines[train_indices,]) %in% outliers$.rownames,0,1)
 residualPlots(lr_fit, id = TRUE, col = as.factor( wwines[train_indices,]$outlier), ask = FALSE)
 ```
 
 
 ## Outliers free model (first)
 ```{r}
- wwines[train_indices,]$outlier<- NULL
- wwines[train_indices,]_outlierfree <-  wwines[train_indices,][-outliers,]
-lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]_outlierfree,
+wwines[train_indices,]$outlier<- NULL
+wwines[train_indices,]$outlierfree <-  wwines[train_indices,][-outliers,]
+lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]$outlierfree,
                           family=binomial(link='logit'))
 
 # coefficients
@@ -387,9 +388,9 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 
 ## Outliers free model (second)
 ```{r}
- wwines[train_indices,]$outlier<- NULL
- wwines[train_indices,]_outlierfree <-  wwines[train_indices,][-as.numeric(outliers$.rownames),]
-lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]_outlierfree,
+wwines[train_indices,]$outlier<- NULL
+wwines[train_indices,]$outlierfree <-  wwines[train_indices,][-as.numeric(outliers$.rownames),]
+lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]$outlierfree,
                           family=binomial(link='logit'))
 
 # coefficients
