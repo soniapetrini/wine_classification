@@ -175,64 +175,59 @@ We find this variable which is significant at 90% confidence level:
 ```{r}
 #here we use mlr3 package
 #defining our task: classification on wines with quality as response variable and low quality as baseline
-task_train = TaskClassif$new(id = "wines",  wwines[train_indices,], target = "quality", positive = "low")
+task_train = TaskClassif$new(id = "wines",  wwines[train_indices,], target = "quality", positive = "high")
 #defining the learner which will perform the training procedure on our model
 learner_train = lrn("classif.log_reg", predict_type = "prob")
 #defining how we want to perform cross validation (setting number of folds to 5)
 cv5 = rsmp("cv", folds = 5)
 #we want to tweak the threshold of our classification: we analyze values from 0.3 to 0.6 with step 0.01
-thresholds <- seq(0.3,0.6,0.01)
+thresholds <- seq(0.5,0.8,0.01)
 
 #collecting performances with different thresholds
-accuracy <- list()
-sensitivity <- list()
-specificity <- list()
-auroc <- list()
-i <- 1
+measures_list <- rep(list(list()), 3)
+
 for (thresh in thresholds) {
     res_cv = resample(task_train, learner_train, cv5, store_models = TRUE)
     #combined prediction of all individual resampling iterations
     prediction <- res_cv$prediction()
     prediction$set_threshold(thresh)
     #scores are combined as well from all individual resampling iterations
-    accuracy[i] <- prediction$score(measures = msr("classif.acc"), task = task_train)
-    sensitivity[i] <- prediction$score(measures = msr("classif.sensitivity"), task = task_train)
-    specificity[i] <- prediction$score(measures = msr("classif.specificity"), task = task_train)
-    auroc[i] <- prediction$score(measures = msr("classif.auc"), task = task_train)
-    i<-i+1
+    scores <- prediction$score(measures = c(msr("classif.acc"),msr("classif.sensitivity"),msr("classif.specificity")))
+    coefficients <- (unname(scores))
+    measures_list <- mapply(append, measures_list, coefficients, SIMPLIFY = FALSE)
 }
 
-#collecting scores
 measures <- data.frame(thresholds,
-                       "accuracy" =unlist(accuracy), 
-                       "sensitivity" =unlist(sensitivity),
-                       "specificity" = unlist(specificity),
-                       "auroc" = unlist(auroc))
-  
+                       "accuracy" = unlist(measures_list[[1]]), 
+                       "sensitivity" = unlist(measures_list[[2]]),
+                       "specificity" = unlist(measures_list[[3]]))
+
 #finding optimal point: intersection
 equivalent <- function(x, y, tol = 0.02) abs(x - y) < tol
 intersection_indices <- which(equivalent(measures$sensitivity,measures$specificity))
+th <- mean(thresholds[intersection_indices]) 
+
 melt_measures <- melt(measures, id.vars="thresholds")
 ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variable )) + 
   geom_line() +
-  geom_vline(xintercept = mean(thresholds[intersection_indices]),linetype = "dotted") +
-  geom_label(aes(x = 0.37, y = 0.5, label = "0.355"))
+  geom_vline(xintercept = th,linetype = "dotted") +
+  geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
 
 ```
 
-Optimal threshold is 0.355.
+Optimal threshold is 0.35.
 Since the choice of the threshold depends on the aim of the analysis, we decided to use the level which corresponds to the intersection between accuracy, specificity, and sensitivity, as our aim is to build a predictor which would havee the best behaviour on different data.◊
 
 ### Complete model test performance 
 ```{r}
 # define new task for test set
-task_test = TaskClassif$new(id = "wines_test",  wwines[-train_indices,], target = "quality", positive = "low")
+task_test = TaskClassif$new(id = "wines_test",  wwines[-train_indices,], target = "quality", positive = "high")
 # train on train task
 learner_train$train(task_train)
 # predict on test task
 pred <- learner_train$predict(task_test)
 # set optimal threshold
-pred$set_threshold(mean(thresholds[intersection_indices]))
+pred$set_threshold(th)
 # performance
 cm <- list("confusion" = pred$confusion,
           "accuracy" = pred$score(measures = msr("classif.acc")),
@@ -290,7 +285,8 @@ text(10.5,9, "Optimal model", col="yellow",cex = 0.8)
 
 Only including: fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates, alcohol.
 ```{r}
-lr_fit_res <- glm(quality ~ fixed.acidity+volatile.acidity+residual.sugar+free.sulfur.dioxide+sulphates+alcohol, data =  wwines[train_indices,],
+wwines.res <- wwines[,c(1,2,4,6,9,10,11)]
+lr_fit_res <- glm(quality ~., data =  wwines.res[train_indices,],
           family=binomial(link='logit'))
 
 # coefficients
@@ -315,18 +311,18 @@ We find these variable which are significant at 90% confidence level:
 ```{r, warning=FALSE}
 #unrestricted model performance
 unrestr_probs <- predict(lr_fit,  wwines[-train_indices,], type="response")
-unrestr_preds <- ifelse(unrestr_probs < 0.355,"low","high")
-unrestr_cm <- confusionMatrix(factor(unrestr_preds,levels=c("high","low")),
+unrestr_preds <- ifelse(unrestr_probs > th,"high","low")
+unrestr_cm <- confusionMatrix(factor(unrestr_preds),
                          wwines[-train_indices,]$quality,
-                        positive = "low"
+                        positive = "high"
                         )
 unrestr_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
 
 #restricted model performance
-restr_probs <- predict(lr_fit_res,  wwines[-train_indices,], type="response")
-restr_preds <- ifelse(restr_probs < 0.355,"low","high")
-restr_cm <- confusionMatrix(factor(restr_preds,levels=c("high","low")),                         wwines[-train_indices,]$quality,
-                        positive = "low"
+restr_probs <- predict(lr_fit_res,  wwines.res[-train_indices,], type="response")
+restr_preds <- ifelse(restr_probs > th,"high","low")
+restr_cm <- confusionMatrix(factor(restr_preds),                         wwines[-train_indices,]$quality,
+                        positive = "high"
                         )
 restr_performance <- list(restr_cm$overall[1], restr_cm$byClass[1], restr_cm$byClass[2])
 
@@ -335,6 +331,7 @@ data.frame("unrestr_performance" =unlist(unrestr_performance),"restr_performance
            "improvement" = unlist(restr_performance)-unlist(unrestr_performance))
 ```
 There is a little improvement in the performance of the restricted model.
+
 
 ## Detecting outliers (first)
 ```{r, warning=FALSE}
@@ -416,10 +413,10 @@ data.frame(variable,outliers$Estimate,no_outliers$Estimate, "difference"=outlier
 ```{r}
 # outliers free
 lr_prob_of <- predict(lr_fit_outlierfree,  wwines[-train_indices,], type="response")
-lr_pred_of <- ifelse(lr_prob_of > 0.355,"low","high")
+lr_pred_of <- ifelse(lr_prob_of > th,"high","low")
 cm_of <- confusionMatrix(as.factor(lr_pred_of),
                          wwines[-train_indices,]$quality,
-                        positive = "low"
+                        positive = "high"
                         )
 
 out_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
@@ -449,14 +446,14 @@ S3 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
 set.seed(4)
 S4 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
 lr_b <- function(i){
-      lr_f <- glm(quality ~ volatile.acidity+residual.sugar+free.sulfur.dioxide+density+pH+sulphates+alcohol, 
+      lr_f <- glm(quality ~ fixed.acidity+volatile.acidity+residual.sugar+free.sulfur.dioxide+sulphates+alcohol, 
                   data =  wwines[train_indices,][i, ],family=binomial(link='logit'))
       lr_prob <- predict(lr_f, wwines[train_indices,][i,], type="response")
-      lr_pred <- ifelse(lr_prob > 0.355,"low","high")
+      lr_pred <- ifelse(lr_prob > th,"high","low")
       cm <- confusionMatrix(
                 as.factor(lr_pred),
                  wwines[train_indices,][i,]$quality,
-                positive = "low"
+                positive = "high"
                 )
       a <- cm$overall[[1]]
       return(a)
@@ -467,31 +464,3 @@ round(aggregate,4)
 
 ################################################################################
 
-# Relation with restricted model variables
-
-volatile.acidity, residual.sugar, free.sulfur.dioxide, density, 
-pH, sulphates, alcohol
-
-
-```{r}
-ggplot(wwines, aes(x = volatile.acidity, color = quality)) +
-  geom_histogram() +
-  labs(x = "volatile.acidity",
-       title = "Wine quality by volatile.acidity")
-
-ggplot(wwines, aes(x = residual.sugar, color = quality)) +
-  geom_histogram() +
-  labs(x = "residual.sugar",
-       title = "Wine quality by residual.sugar")
-
-ggplot(wwines, aes(x = free.sulfur.dioxide, color = quality)) +
-  geom_histogram() +
-  labs(x = "free.sulfur.dioxide",
-       title = "Wine quality by free.sulfur.dioxide")
-
-ggplot(wwines, aes(x = density, color = quality)) +
-  geom_histogram() +
-  labs(x = "density",
-       title = "Wine quality by density")
-
-```
