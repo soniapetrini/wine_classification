@@ -1,15 +1,15 @@
 ### data
-- dataset description
-- type and aim of analysis
-- correlations (dealing with multicollinearity)
-- boxplots (distributions)
+- dataset description (Luca)
+- type and aim of analysis (Luca)
+- correlations (dealing with multicollinearity) (Luca)
+- boxplots (distributions) (Luca)
 
 ## full model 
 - logistic regression:
     - odds ratios interpretation
-- finding optimal threshold:
-    - why and how to look for it
-    - how we choose it
+- finding optimal threshold: 
+    - why and how to look for it (Luca)
+    - how we choose it (Luca)
 - performance on test
 
 ## model selection
@@ -21,8 +21,8 @@
 - performances' comparison (full vs restricted)
 
 ## outliers detection
-- cook's distance
-- dffits
+- cook's distance (Luca)
+- dffits (Luca)
 
 ## outliers free model
 - outliers free regression
