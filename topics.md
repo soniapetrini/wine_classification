@@ -1,5 +1,5 @@
 ### data
-- dataset description (Luca)
+- dataset description [Luca]
 - type and aim of analysis [Luca]
 - correlations (dealing with multicollinearity) [Luca]
 - boxplots (distributions) [Luca]
