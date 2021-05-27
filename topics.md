@@ -12,7 +12,7 @@
     - how we choose it (Luca)
 - performance on test
 
-## model selection
+## model selection (Serafina)
 - vif
 - forward stepwise method
 
@@ -30,7 +30,7 @@
 - performance on test
 - ROC curve
 
-## bagging
+## bagging (Serafina)
 - resulting improved performance
 
 
