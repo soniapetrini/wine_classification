@@ -6,7 +6,7 @@
 
 ## full model 
 - logistic regression:
-    - odds ratios interpretation
+    - odds ratios interpretation [AHAHAHAHA liz of course]
 - finding optimal threshold: 
     - why and how to look for it [Luca]
     - how we choose it [Luca]
