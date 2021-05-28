@@ -362,18 +362,30 @@ outliers <-
   augment(lr_fit) %>%
   mutate(df = unname(dffits(lr_fit)))%>%
   filter(.cooksd > 4/nrow( wwines[train_indices,]) |abs(df)>threshold)
-#%>%  select(.rownames)
 
 wwines[train_indices,]["outlier"] <- ifelse(rownames(wwines[train_indices,]) %in% outliers$.rownames,0,1)
 residualPlots(lr_fit, id = TRUE, col = as.factor( wwines[train_indices,]$outlier), ask = FALSE)
 ```
 
+## Removing outliers from training set
+```{r}
+no_outliers_train_indices <- c()
+j<-1
+for(i in 1:length(train_indices)){
+  if (!(train_indices[i] %in% as.numeric(outliers$.rownames))){
+    no_outliers_train_indices[j] <- train_indices[i]
+    j<-j+1
+  }
+}
+```
+
 
 ## Outliers free model (first)
 ```{r}
+#removing useless columns
 wwines[train_indices,]$outlier<- NULL
-wwines[train_indices,]$outlierfree <-  wwines[train_indices,][-outliers,]
-lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]$outlierfree,
+#fitting on outlier free data
+lr_fit_outlierfree <- glm(quality ~., data =  wwines[no_outliers_train_indices,],
                           family=binomial(link='logit'))
 
 # coefficients
@@ -385,9 +397,10 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 
 ## Outliers free model (second)
 ```{r}
+#removing useless columns
 wwines[train_indices,]$outlier<- NULL
-wwines[train_indices,]$outlierfree <-  wwines[train_indices,][-as.numeric(outliers$.rownames),]
-lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]$outlierfree,
+#fitting on outlier free data
+lr_fit_outlierfree <- glm(quality ~., data =  wwines[no_outliers_train_indices,],
                           family=binomial(link='logit'))
 
 # coefficients
@@ -404,7 +417,7 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 outliers <- data.frame(summary(lr_fit)$coefficient)
 no_outliers<- data.frame(summary(lr_fit_outlierfree)$coefficient)
 
-variable<-c("(constant)",colnames(wwines)[-12])
+variable<-c("(constant)",colnames(wwines)[-c(1,12)])
 
 data.frame(variable,outliers$Estimate,no_outliers$Estimate, "difference"=outliers$Estimate-no_outliers$Estimate)
 ```
