@@ -17,7 +17,7 @@
 - forward stepwise method [Serafina]
 
 ## restricted model
-- logistic regression
+- logistic regression [Sonia]
 - performances' comparison (full vs restricted) [Sonia]
 
 ## outliers detection
