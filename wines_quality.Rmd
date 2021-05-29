@@ -155,19 +155,19 @@ summary(lr_fit)
 # odds ratios
 exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
 ```
-Here we find these variable which are significant at 99% confidence level: ◊check values
-- Intercept 99.97%: this value corresponds to the increase in the odds of having a low quality wine when all the explanatory variables are set at 0.
-- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.87% decrease in the odds of having a low quality wine.
-- residual.sugar: a unitary increase in volatile acidity will lead to a 7.44% increase in the odds of having a low quality wine.
-- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 1.36% increase in the odds of having a low quality wine.
-- alcohol: a unitary increase in volatile acidity will lead to a 186.5% increase in the odds of having a low quality wine.
+Here we find these variable which are significant at 99% confidence level:
+- Intercept 99.97%: this value corresponds to the increase in the odds of having a high quality wine when all the explanatory variables are set at 0.
+- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.87% decrease in the odds of having a high quality wine.
+- residual.sugar: a unitary increase in volatile acidity will lead to a 7.44% increase in the odds of having a high quality wine.
+- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 1.36% increase in the odds of having a high quality wine.
+- alcohol: a unitary increase in volatile acidity will lead to a 186.5% increase in the odds of having a high quality wine.
 
 We find these variable which are significant at 95% confidence level:
-- fixed.acidity: a unitary increase in volatile acidity will lead to a 16.68% decrease in the odds of having a low quality wine.
-- sulphates: a unitary increase in volatile acidity will lead to a 283.46% increase in the odds of having a low quality wine.
+- fixed.acidity: a unitary increase in volatile acidity will lead to a 16.68% decrease in the odds of having a high quality wine.
+- sulphates: a unitary increase in volatile acidity will lead to a 283.46% increase in the odds of having a high quality wine.
 
 We find this variable which is significant at 90% confidence level:
-- total.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.32% decrease in the odds of having a low quality wine.
+- total.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.32% decrease in the odds of having a high quality wine.
 
 
 ### Finding the optimal threshold for discriminating high quality wines from low quality wines
@@ -295,15 +295,15 @@ summary(lr_fit_res)
 exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
 Here we find these variable which are significant at 99% confidence level:
-- Intercept 99.98%: this value corresponds to the decrease in the odds of having a low quality wine when all the explanatory variables are set at 0.
-- fixed.acidity: a unitary increase in volatile acidity will lead to a 18.07% decrease in the odds of having a low quality wine.
-- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.89% decrease in the odds of having a low quality wine.
-- residual.sugar: a unitary increase in volatile acidity will lead to a 7.2% increase in the odds of having a low quality wine.
-- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.92% increase in the odds of having a low quality wine.
-- alcohol: a unitary increase in volatile acidity will lead to a 196.73% increase in the odds of having a low quality wine.
+- Intercept 99.98%: this value corresponds to the decrease in the odds of having a high quality wine when all the explanatory variables are set at 0.
+- fixed.acidity: a unitary increase in volatile acidity will lead to a 18.07% decrease in the odds of having a high quality wine.
+- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.89% decrease in the odds of having a high quality wine.
+- residual.sugar: a unitary increase in volatile acidity will lead to a 7.2% increase in the odds of having a high quality wine.
+- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.92% increase in the odds of having a high quality wine.
+- alcohol: a unitary increase in volatile acidity will lead to a 196.73% increase in the odds of having a high quality wine.
 
 We find these variable which are significant at 95% confidence level:
-- sulphates: a unitary increase in volatile acidity will lead to a 223.72% increase in the odds of having a low quality wine.
+- sulphates: a unitary increase in volatile acidity will lead to a 223.72% increase in the odds of having a high quality wine.
 
 ## Test performances of restricted and unrestricted models
 ```{r, warning=FALSE}
