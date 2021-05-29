@@ -83,16 +83,16 @@ We have to worry about two correlations: residual.sugar with density and density
 
 ### Histograms
 ```{r}
-h1 <- ggplot(wwines, aes(residual.sugar, color = quality))+
+residual.sugar.plot <- ggplot(wwines, aes(residual.sugar, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
-h2 <- ggplot(wwines, aes(alcohol, color = quality))+
+alcohol.plot <- ggplot(wwines, aes(alcohol, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
-h3 <- ggplot(wwines, aes(density, color = quality))+
+density.plot <- ggplot(wwines, aes(density, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
-grid.arrange(h1,h2,h3, ncol=1)
+grid.arrange(residual.sugar.plot,alcohol.plot,density.plot, ncol=1)
 
 ```
 We decide to remove density, as this will solve both the correlation issues, and we can see from the histograms below that the distribution of density does not depend on quality, while the shape of the residual.sugar and alcohol curves changes for low and high quality wines.
@@ -143,7 +143,7 @@ train_indices<- createDataPartition(wwines$quality,p=0.7,list=FALSE)
 ## Complete model: all variables are included
 
 Estimated coefficients and Odds Ratios.
-The baseline for the regression is "low", because positive: "high" 
+The baseline for the regression is "low", because positive factor is: "high".
 
 ```{r, message=FALSE, warning=FALSE}
 lr_fit <- glm(quality ~., data =  wwines[train_indices,],
@@ -215,7 +215,7 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 
 ```
 
-Optimal threshold is 0.35.
+Optimal threshold is 0.65.
 Since the choice of the threshold depends on the aim of the analysis, we decided to use the level which corresponds to the intersection between accuracy, specificity, and sensitivity, as our aim is to build a predictor which would havee the best behaviour on different data.◊
 
 ### Complete model test performance 
@@ -265,13 +265,12 @@ Forward stepwise steps:
 2. inclusion of volatile.acidity
 3. inclusion of residual.sugar
 4. inclusion of sulphates
-5. inclusion of density
-6. inclusion of pH
-7. inclusion of free.sulfur.dioxide
-8. inclusion of total.sulfur.dioxide
-9. inclusion of fixed.acidity
+5. inclusion of fixed.acidity
+6. inclusion of free.sulfur.dioxide
+7. inclusion of total.sulfur.dioxide
+8. inclusion of pH
+9. inclusion of chlorides 
 10. inclusion of citric.acid
-11. inclusion of chlorides
 
 ```{r}
 plot(regfit.fwd,scale="bic")
@@ -295,17 +294,16 @@ summary(lr_fit_res)
 # odds ratios
 exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
-Here we find these variable which are significant at 99% confidence level: ◊check values
-- (Intercept)
-- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.86127% decrease in the odds of having a low quality wine.
-- residual.sugar: a unitary increase in volatile acidity will lead to a 17.2293% increase in the odds of having a low quality wine.
-- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.9025% increase in the odds of having a low quality wine.
-- density: a unitary increase in volatile acidity will lead to a 100% decrease in the odds of having a low quality wine.
-- sulphates: a unitary increase in volatile acidity will lead to a 377.0417% increase in the odds of having a low quality wine.
-- alcohol: a unitary increase in volatile acidity will lead to a 124.092% increase in the odds of having a low quality wine.
+Here we find these variable which are significant at 99% confidence level:
+- Intercept 99.98%: this value corresponds to the decrease in the odds of having a low quality wine when all the explanatory variables are set at 0.
+- fixed.acidity: a unitary increase in volatile acidity will lead to a 18.07% decrease in the odds of having a low quality wine.
+- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.89% decrease in the odds of having a low quality wine.
+- residual.sugar: a unitary increase in volatile acidity will lead to a 7.2% increase in the odds of having a low quality wine.
+- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.92% increase in the odds of having a low quality wine.
+- alcohol: a unitary increase in volatile acidity will lead to a 196.73% increase in the odds of having a low quality wine.
 
-We find these variable which are significant at 90% confidence level:
-- pH: a unitary increase in volatile acidity will lead to a 125.6878% increase in the odds of having a low quality wine.
+We find these variable which are significant at 95% confidence level:
+- sulphates: a unitary increase in volatile acidity will lead to a 223.72% increase in the odds of having a low quality wine.
 
 ## Test performances of restricted and unrestricted models
 ```{r, warning=FALSE}
