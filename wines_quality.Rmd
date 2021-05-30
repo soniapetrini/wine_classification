@@ -62,29 +62,33 @@ str(wwines)
 All the features are numeric, including the target.
 We re-encode the target as a factor to make it binary, with two levels of quality.
 
-## Defining the target: high and low quality
+## Defining the target
 
 ```{r, message=FALSE, warning = FALSE}
 wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
                                       wwines$quality > 5 ~ "high"))
-wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 table(wwines$quality)
 ```
 
 
 ## Data description
 
+Before proceeding with our analysis we perform some descriptive statistics, in order to both understand the relations within the variables, and to visualize their distributions.
+
 ### Heatmap
+
+First we plot the correlation matrix, in order to detect any strong relation among features which could lead to multicollinearity problems.
 ```{r}
-#compute on all features (without output variable which is at index 12)
 cors <- cor(wwines[-12])
 corrplot(cors, type = "upper", 
          tl.col = "black", tl.srt = 45)
 
 ```
-We have to worry about two correlations: residual.sugar with density and density with alcohol.
+This plot highlights a strong correlation between density and two variables: residual.sugar and alcohol.
 
 ### Histograms
+
+To get an understanding of which variable should be excluded from the regression, we plot the histograms of the highly correlated variables identified above.
 ```{r}
 residual.sugar.plot <- ggplot(wwines, aes(residual.sugar, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
@@ -95,10 +99,11 @@ alcohol.plot <- ggplot(wwines, aes(alcohol, color = quality))+
 density.plot <- ggplot(wwines, aes(density, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
+
 grid.arrange(residual.sugar.plot,alcohol.plot,density.plot, ncol=1)
 
 ```
-We decide to remove density, as this will solve both the correlation issues, and we can see from the histograms below that the distribution of density does not depend on quality, while the shape of the residual.sugar and alcohol curves changes for low and high quality wines.
+We decide to remove density. In fact, we can observe that for each value of density there is no difference in the distribution of wines' quality, once we account for the numerosity of the two quality levels. On the other hand, the modal values for the other two variables differ for low and high quality wines, thus adding more useful information for the purpose of classification.
 
 ```{r}
 wwines$density <- NULL
@@ -106,14 +111,19 @@ wwines$density <- NULL
 
 
 ### Correlation with target variable
+
+It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.
 ```{r, warning=FALSE, message=FALSE}
+wwines$quality <- factor(wwines$quality, levels = c("high","low"))
 bicorrs <- sapply(wwines[,-11], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
-Here the correlations are displayed in ascending absolute value, and we can see that the variable showing the highest correlation with wines' quality is alcohol.
+Here the correlations are displayed in ascending absolute value, and we can observe that the variable showing the highest correlation with wines' quality is alcohol, but this is not a too strong correlation.
 The sign is positive, meaning that as alcohol increases the quality of wine also increases.
 
 ### Boxplots
+
+We now look at the distribution of all the explanatory variables, in order both to visualize those values which are far from the bulk of the data, and to get an understanding of the variables displaying the most divergent median values for low and high quality wines.
 ```{r, message=FALSE, warning = FALSE}
 summary(wwines)
 # melt the dataset
@@ -125,13 +135,11 @@ geom_boxplot(aes(fill=quality)) +
 facet_wrap( ~ variable, scales="free")
 ```
 
-These plots allow us to get a first impression about which variables will be significant for the regression.
-
 We can observe the following:
-- The features displaying the highest median difference between high and low quality wines are volatile.acidity, total.sulfur.dioxide, pH, alcohol.
+- The features displaying the highest median difference between high and low quality wines are volatile.acidity, total.sulfur.dioxide, pH, alcohol. The variables are candidates to be the significant ones in the regression framework.
 - There are some outlying values. We will deal with them in the section below.
 
-## Data splitting: training and test set
+## Data splitting
 
 ```{r}
 set.seed(42)
@@ -174,9 +182,13 @@ text(10.5,9, "Optimal model", col="yellow",cex = 0.8)
 
 # LOGISTIC REGRESSION
 
-The restricted model has only 6 variables:
+The logistic regression is now performed on the restricted model with the six selcted variables:
 fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates, alcohol.
+
+With factor() we relevel the variable "quality" in order to set "low" as the baseline for the logistic regression.
 ```{r}
+wwines$quality <- factor(wwines$quality, levels = c("low","high"))
+
 wwines.res <- wwines[,c(1,2,4,6,9,10,11)]
 lr_fit_res <- glm(quality ~., data =  wwines.res[train_indices,],
           family=binomial(link='logit'))
@@ -187,32 +199,35 @@ summary(lr_fit_res)
 # odds ratios
 exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
-Here we find these variable which are significant at 99% confidence level:
-- Intercept 99.98%: this value corresponds to the decrease in the odds of having a high quality wine when all the explanatory variables are set at 0.
-- fixed.acidity: a unitary increase in volatile acidity will lead to a 18.07% decrease in the odds of having a high quality wine.
-- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.89% decrease in the odds of having a high quality wine.
-- residual.sugar: a unitary increase in volatile acidity will lead to a 7.2% increase in the odds of having a high quality wine.
-- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.92% increase in the odds of having a high quality wine.
-- alcohol: a unitary increase in volatile acidity will lead to a 196.73% increase in the odds of having a high quality wine.
+The following variables are those significant at a 99% confidence level:
+- Intercept: the value 99.98% corresponds to the decrease in the odds of having a high quality wine when all the explanatory variables are set to 0.
+- fixed.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 18.07% decrease in the odds of having a high quality wine.
+- volatile.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 99.89% decrease in the odds of having a high quality wine.
+- residual.sugar: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 7.2% increase in the odds of having a high quality wine.
+- free.sulfur.dioxide: a unitary increase (1 mg/dm^3) in volatile acidity will lead to a 0.92% increase in the odds of having a high quality wine.
+- alcohol: a unitary increase (percentage) in volatile acidity will lead to a 196.73% increase in the odds of having a high quality wine.
 
-We find these variable which are significant at 95% confidence level:
-- sulphates: a unitary increase in volatile acidity will lead to a 223.72% increase in the odds of having a high quality wine.
+The following variable is significant at a 95% confidence level:
+- sulphates: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 223.72% increase in the odds of having a high quality wine.
 
 
-## optimal threshold
+## Optimal threshold
+
+In order to get the best possible performance, we performed threshold optimization exploiting the mlr3 package. 
+Since the choice of the threshold strictly depends on the aim of the analysis, which in our case is to build a predictor which would have the best behaviour on new different data, we looked for a threshold which could guarantee an equilibrium between the two types of errors.
 
 ```{r}
 #here we use mlr3 package
-#defining our task: classification on wines with quality as response variable and low quality as baseline
+#defining our task: classification of training data
 task_train = TaskClassif$new(id = "wines",  wwines[train_indices,], target = "quality", positive = "high")
-#defining the learner which will perform the training procedure on our model
+#defining the type of learner: logistic regression
 learner_train = lrn("classif.log_reg", predict_type = "prob")
-#defining how we want to perform cross validation (setting number of folds to 5)
+#defining the resampling method
 cv5 = rsmp("cv", folds = 5)
-#we want to tweak the threshold of our classification: we analyze values from 0.3 to 0.6 with step 0.01
+#defing the search space
 thresholds <- seq(0.5,0.8,0.01)
 
-#collecting performances with different thresholds
+#collecting cross-validated performances for different thresholds
 measures_list <- rep(list(list()), 3)
 
 for (thresh in thresholds) {
@@ -220,7 +235,7 @@ for (thresh in thresholds) {
     #combined prediction of all individual resampling iterations
     prediction <- res_cv$prediction()
     prediction$set_threshold(thresh)
-    #scores are combined as well from all individual resampling iterations
+    #computing the scores
     scores <- prediction$score(measures = c(msr("classif.acc"),msr("classif.sensitivity"),msr("classif.specificity")))
     coefficients <- (unname(scores))
     measures_list <- mapply(append, measures_list, coefficients, SIMPLIFY = FALSE)
@@ -242,26 +257,23 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
   geom_vline(xintercept = th,linetype = "dotted") +
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
 
-th <- mean(thresholds[intersection_indices])
-
 ```
-
+The optimal threshold for our aim is 0.645.
+This thresholds meets our expectations, as the equilibrium point corresponds to a value higher than 0.5. 
+This higher threshold compensates for the higher a priori probability of labelling a wine as high quality (low: 1640, high: 3258).
 
 ## Model's test performance 
+
+
 ```{r}
-#here we use mlr3 package
-#defining our task: classification on wines with quality as response variable and low quality as baseline
 task_train = TaskClassif$new(id = "wines",  wwines.res[train_indices,], target = "quality", positive = "high")
-#defining the learner which will perform the training procedure on our model
-learner = lrn("classif.log_reg", predict_type = "prob")
-#defining how we want to perform cross validation (setting number of folds to 5)
-cv5 = rsmp("cv", folds = 5)
-# define new task for test set
 task_test = TaskClassif$new(id = "wines_test",  wwines.res[-train_indices,], target = "quality", positive = "high")
-# train on train task
-learner$train(task_train)
-# predict on test task
-base_pred <- learner$predict(task_test)
+
+learner = lrn("classif.log_reg", predict_type = "prob")
+cv5 = rsmp("cv", folds = 5)
+
+learner$train(task_train) # training on train set
+base_pred <- learner$predict(task_test) # predicting on test set
 base_pred$set_threshold(th)
 
 # performance
@@ -305,6 +317,8 @@ data.frame("unrestr_performance" =unlist(unrestr_performance),"restr_performance
            "difference" = unlist(restr_performance)-unlist(unrestr_performance))
 ```
 As expected there is a slight worsening in the model's prediction accuracy, but this increase in bias is negligible with respect to the decrease in variance obtained with the simpler model.
+
+
 ## Model diagnostics
 
 ### Multicollinearity 
@@ -401,7 +415,6 @@ data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estima
 
 # OPTIMAL THRESHOLD
 
-Finding the optimal threshold for discriminating high quality wines from low quality wines.
 
 ```{r}
 #we want to tweak the threshold of our classification: we analyze values from 0.3 to 0.6 with step 0.01
@@ -439,8 +452,7 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 
 ```
 
-Optimal threshold is 0.665.
-Since the choice of the threshold depends on the aim of the analysis, we decided to use the level which corresponds to the intersection between accuracy, specificity, and sensitivity, as our aim is to build a predictor which would have the best behaviour on different data.
+
 
 ## Performance
 ```{r}
