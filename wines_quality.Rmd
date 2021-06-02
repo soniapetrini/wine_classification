@@ -70,6 +70,9 @@ wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
 table(wwines$quality)
 ```
 
+```{r}
+wwines["id"] <- rownames(wwines)
+```
 
 ## Data description
 
@@ -79,7 +82,7 @@ Before proceeding with our analysis we perform some descriptive statistics, in o
 
 First we plot the correlation matrix, in order to detect any strong relation among features which could lead to multicollinearity problems.
 ```{r}
-cors <- cor(wwines[-12])
+cors <- cor(wwines[-c(12,13)])
 corrplot(cors, type = "upper", 
          tl.col = "black", tl.srt = 45)
 
@@ -115,7 +118,7 @@ wwines$density <- NULL
 It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.
 ```{r, warning=FALSE, message=FALSE}
 wwines$quality <- factor(wwines$quality, levels = c("high","low"))
-bicorrs <- sapply(wwines[,-11], function(x) round(biserial.cor(x,wwines$quality),2))
+bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
 Here the correlations are displayed in ascending absolute value, and we can observe that the variable showing the highest correlation with wines' quality is alcohol, but this is not a too strong correlation.
@@ -127,7 +130,7 @@ We now look at the distribution of all the explanatory variables, in order both 
 ```{r, message=FALSE, warning = FALSE}
 summary(wwines)
 # melt the dataset
-wwines.m <- melt(wwines, id.var = "quality")
+wwines.m <- melt(wwines[,-12], id.var = "quality")
 
 # wrapped boxplots
 ggplot(data = wwines.m, aes(x=variable, y=value)) +
@@ -144,6 +147,8 @@ We can observe the following:
 ```{r}
 set.seed(42)
 train_indices<- createDataPartition(wwines$quality,p=0.7,list=FALSE)
+dtrain <- wwines[train_indices,]
+dtest <- wwines[-train_indices,]
 ```
 
 ###########################################################################
@@ -153,7 +158,7 @@ train_indices<- createDataPartition(wwines$quality,p=0.7,list=FALSE)
 ## Forward Stepwise method
 ```{r}
 library(leaps)
-regfit.fwd=regsubsets(quality~.,data=wwines,method="forward", nvmax=13)
+regfit.fwd=regsubsets(quality~.,data=wwines[,-12],method="forward", nvmax=13)
 summary.fwd <- summary(regfit.fwd)
 
 plot(summary.fwd$bic,xlab="Number of Variables",ylab="bic")
@@ -189,8 +194,10 @@ With factor() we relevel the variable "quality" in order to set "low" as the bas
 ```{r}
 wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 
-wwines.res <- wwines[,c(1,2,4,6,9,10,11)]
-lr_fit_res <- glm(quality ~., data =  wwines.res[train_indices,],
+dtrain.res <- dtrain[,c(1,2,4,6,9,10,11,12)]
+dtest.res <- dtest[,c(1,2,4,6,9,10,11,12)]
+
+lr_fit_res <- glm(quality ~., data =  dtrain.res[,-8],
           family=binomial(link='logit'))
 
 # coefficients
@@ -219,7 +226,7 @@ Since the choice of the threshold strictly depends on the aim of the analysis, w
 ```{r}
 #here we use mlr3 package
 #defining our task: classification of training data
-task_train = TaskClassif$new(id = "wines",  wwines[train_indices,], target = "quality", positive = "high")
+task_train = TaskClassif$new(id = "wines",  dtrain, target = "quality", positive = "high")
 #defining the type of learner: logistic regression
 learner_train = lrn("classif.log_reg", predict_type = "prob")
 #defining the resampling method
@@ -266,8 +273,8 @@ This higher threshold compensates for the higher a priori probability of labelli
 
 
 ```{r}
-task_train = TaskClassif$new(id = "wines",  wwines.res[train_indices,], target = "quality", positive = "high")
-task_test = TaskClassif$new(id = "wines_test",  wwines.res[-train_indices,], target = "quality", positive = "high")
+task_train = TaskClassif$new(id = "wines",  dtrain.res, target = "quality", positive = "high")
+task_test = TaskClassif$new(id = "wines_test",  dtest.res, target = "quality", positive = "high")
 
 learner = lrn("classif.log_reg", predict_type = "prob")
 cv5 = rsmp("cv", folds = 5)
@@ -292,22 +299,22 @@ By removing 5 out of 11 explanatory variables we are trying to avoid overfitting
 
 ```{r, warning=FALSE}
 #running the full model
-lr_fit <- glm(quality ~., data =  wwines[train_indices,],
+lr_fit <- glm(quality ~., data =  dtrain,
           family=binomial(link='logit'))
 
 #full model performance
-unrestr_probs <- predict(lr_fit,  wwines[-train_indices,], type="response")
+unrestr_probs <- predict(lr_fit,  dtest, type="response")
 unrestr_preds <- ifelse(unrestr_probs > th,"high","low")
 unrestr_cm <- confusionMatrix(factor(unrestr_preds),
-                         wwines[-train_indices,]$quality,
+                         dtest$quality,
                         positive = "high"
                         )
 unrestr_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
 
 #restricted model performance
-restr_probs <- predict(lr_fit_res,  wwines.res[-train_indices,], type="response")
+restr_probs <- predict(lr_fit_res,  dtest.res, type="response")
 restr_preds <- ifelse(restr_probs > th,"high","low")
-restr_cm <- confusionMatrix(factor(restr_preds),                         wwines[-train_indices,]$quality,
+restr_cm <- confusionMatrix(factor(restr_preds),                         dtest$quality,
                         positive = "high"
                         )
 restr_performance <- list(restr_cm$overall[1], restr_cm$byClass[1], restr_cm$byClass[2])
@@ -334,37 +341,24 @@ Checking the VIF after the variable "density" removal we can confirm that no oth
 
 ### Detecting outliers
 
-```{r, warning=FALSE}
-#cook's distance
-#cooks distance threshold: https://www.scikit-yb.org/en/latest/api/regressor/influence.html#:~:text=Because%20of%20this%2C%20Cook's%20Distance,that%20is%20above%20that%20threshold.
-plot(lr_fit_res, which = 4, id.n = 3)
-outliers <- 
-  augment(lr_fit_res) %>%
-  filter(.cooksd > 4/nrow(wwines.res[train_indices,]))
-
-wwines.res[train_indices,]["outlier"] <- ifelse(rownames(wwines.res[train_indices,]) %in% outliers$.rownames,0,1)
-residualPlots(lr_fit_res, id = TRUE, col = as.factor(wwines.res[train_indices,]$outlier), ask = FALSE)
+```{r warning=FALSE}
+#see Cook's distance
+plot(lr_fit_res, which = 4, id.n = 1)
 ```
 
-### Removing outliers
 ```{r}
-no_outliers_train_indices <- c()
-j<-1
-for(i in 1:length(train_indices)){
-  if (!(train_indices[i] %in% as.numeric(outliers$.rownames))){
-    no_outliers_train_indices[j] <- train_indices[i]
-    j<-j+1
-  }
-}
-```
+dtrain_of <- dtrain.res %>% filter(id != "4746")
 
+lr_fit_of_1 <- glm(quality ~., data =  dtrain_of[,-8],
+          family=binomial(link='logit'))
+
+plot(lr_fit_of_1, which = 4, id.n = 1)
+```
 
 ## Outliers free model
 ```{r}
-#removing useless columns
-wwines.res[train_indices,]$outlier<- NULL
 #fitting on outlier free data
-lr_fit_outlierfree <- glm(quality ~., data =  wwines.res[no_outliers_train_indices,],                          family=binomial(link='logit'))
+lr_fit_outlierfree <- glm(quality ~., data =  dtrain_of[,-8],family=binomial(link='logit'))
 
 # coefficients
 summary(lr_fit_outlierfree)
@@ -375,13 +369,13 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 
 ### Performance
 ```{r}
-task_train = TaskClassif$new(id = "wines_outlierfree",  wwines.res[no_outliers_train_indices,], target = "quality", positive = "high")
+task_train = TaskClassif$new(id = "wines_outlierfree",  dtrain_of[,-8], target = "quality", positive = "high")
 
 learner = lrn("classif.log_reg", predict_type = "prob")
 
 cv5 = rsmp("cv", folds = 5)
 
-task_test = TaskClassif$new(id = "wines_outlierfree_test",  wwines.res[-no_outliers_train_indices,], target = "quality", positive = "high")
+task_test = TaskClassif$new(id = "wines_outlierfree_test",  dtest.res[,-8], target = "quality", positive = "high")
 
 learner$train(task_train)
 
@@ -489,23 +483,23 @@ data.frame("optimal_threshold_preformance" = unlist(cm_opt_th[-1]),
 ################################################################################
 # BAGGING 
 ```{r}
-n <- seq(nrow( wwines[train_indices,]))
+n <- seq(nrow( dtrain))
 set.seed(1)
-S1 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S1 <- sample(n, nrow( dtrain), replace = TRUE)
 set.seed(2)
-S2 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S2 <- sample(n, nrow( dtrain), replace = TRUE)
 set.seed(3)
-S3 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S3 <- sample(n, nrow( dtrain), replace = TRUE)
 set.seed(4)
-S4 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S4 <- sample(n, nrow( dtrain), replace = TRUE)
 lr_b <- function(i){
       lr_f <- glm(quality ~ fixed.acidity+volatile.acidity+residual.sugar+free.sulfur.dioxide+sulphates+alcohol, 
-                  data =  wwines[train_indices,][i, ],family=binomial(link='logit'))
-      lr_prob <- predict(lr_f, wwines[train_indices,][i,], type="response")
+                  data =  dtrain[i, ],family=binomial(link='logit'))
+      lr_prob <- predict(lr_f, dtrain[i,], type="response")
       lr_pred <- ifelse(lr_prob > th,"high","low")
       cm <- confusionMatrix(
                 as.factor(lr_pred),
-                 wwines[train_indices,][i,]$quality,
+                 dtrain[i,]$quality,
                 positive = "high"
                 )
       a <- cm$overall[[1]]
