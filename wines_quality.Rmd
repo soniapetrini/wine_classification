@@ -187,7 +187,7 @@ text(10.5,9, "Optimal model", col="yellow",cex = 0.8)
 
 # LOGISTIC REGRESSION
 
-The logistic regression is now performed on the restricted model with the six selcted variables:
+The logistic regression is now performed on the restricted model with the six selected variables:
 fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates, alcohol.
 
 With factor() we relevel the variable "quality" in order to set "low" as the baseline for the logistic regression.
@@ -207,15 +207,15 @@ summary(lr_fit_res)
 exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
 The following variables are those significant at a 99% confidence level:
-- Intercept: the value 99.98% corresponds to the decrease in the odds of having a high quality wine when all the explanatory variables are set to 0.
-- fixed.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 18.07% decrease in the odds of having a high quality wine.
-- volatile.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 99.89% decrease in the odds of having a high quality wine.
-- residual.sugar: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 7.2% increase in the odds of having a high quality wine.
-- free.sulfur.dioxide: a unitary increase (1 mg/dm^3) in volatile acidity will lead to a 0.92% increase in the odds of having a high quality wine.
-- alcohol: a unitary increase (percentage) in volatile acidity will lead to a 196.73% increase in the odds of having a high quality wine.
+- Intercept: the value 440232.6% corresponds to the increase in the odds of having a high quality wine when all the explanatory variables are set to 0.
+- fixed.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 23.13% increase in the odds of having a high quality wine.
+- volatile.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 102318.1% increase in the odds of having a high quality wine.
+- residual.sugar: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 6.76% decrease in the odds of having a high quality wine.
+- free.sulfur.dioxide: a unitary increase (1 mg/dm^3) in volatile acidity will lead to a 0.62% decrease in the odds of having a high quality wine.
+- alcohol: a unitary increase (percentage) in volatile acidity will lead to a 66.04% decrease in the odds of having a high quality wine.
 
 The following variable is significant at a 95% confidence level:
-- sulphates: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 223.72% increase in the odds of having a high quality wine.
+- sulphates: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 73.22% decrease in the odds of having a high quality wine.
 
 
 ## Optimal threshold
@@ -226,7 +226,7 @@ Since the choice of the threshold strictly depends on the aim of the analysis, w
 ```{r}
 #here we use mlr3 package
 #defining our task: classification of training data
-task_train = TaskClassif$new(id = "wines",  dtrain, target = "quality", positive = "high")
+task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
 #defining the type of learner: logistic regression
 learner_train = lrn("classif.log_reg", predict_type = "prob")
 #defining the resampling method
@@ -265,7 +265,7 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
   geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
 
 ```
-The optimal threshold for our aim is 0.645.
+The optimal threshold for our aim is 0.65.
 This thresholds meets our expectations, as the equilibrium point corresponds to a value higher than 0.5. 
 This higher threshold compensates for the higher a priori probability of labelling a wine as high quality (low: 1640, high: 3258).
 
@@ -273,8 +273,8 @@ This higher threshold compensates for the higher a priori probability of labelli
 
 
 ```{r}
-task_train = TaskClassif$new(id = "wines",  dtrain.res, target = "quality", positive = "high")
-task_test = TaskClassif$new(id = "wines_test",  dtest.res, target = "quality", positive = "high")
+task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
+task_test = TaskClassif$new(id = "wines_test",  dtest.res[,-8], target = "quality", positive = "high")
 
 learner = lrn("classif.log_reg", predict_type = "prob")
 cv5 = rsmp("cv", folds = 5)
@@ -299,11 +299,11 @@ By removing 5 out of 11 explanatory variables we are trying to avoid overfitting
 
 ```{r, warning=FALSE}
 #running the full model
-lr_fit <- glm(quality ~., data =  dtrain,
+lr_fit <- glm(quality ~., data =  dtrain[,-12],
           family=binomial(link='logit'))
 
 #full model performance
-unrestr_probs <- predict(lr_fit,  dtest, type="response")
+unrestr_probs <- predict(lr_fit,  dtest[,-12], type="response")
 unrestr_preds <- ifelse(unrestr_probs > th,"high","low")
 unrestr_cm <- confusionMatrix(factor(unrestr_preds),
                          dtest$quality,
@@ -312,7 +312,7 @@ unrestr_cm <- confusionMatrix(factor(unrestr_preds),
 unrestr_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
 
 #restricted model performance
-restr_probs <- predict(lr_fit_res,  dtest.res, type="response")
+restr_probs <- predict(lr_fit_res,  dtest.res[,-8], type="response")
 restr_preds <- ifelse(restr_probs > th,"high","low")
 restr_cm <- confusionMatrix(factor(restr_preds),                         dtest$quality,
                         positive = "high"
@@ -402,7 +402,7 @@ data.frame("outlierfree_performance" = unlist(cm_outlierfree[-1]),"base_performa
 base <- data.frame(summary(lr_fit_res)$coefficient)
 no_outliers<- data.frame(summary(lr_fit_outlierfree)$coefficient)
 
-variable<-c("(constant)",colnames(wwines.res)[-c(1,12)])
+variable<-c("(constant)",colnames(dtrain.res)[-c(7,8)])
 
 data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estimate-no_outliers$Estimate)
 ```
@@ -446,17 +446,17 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 
 ```
 
-
+The threshold is not affected by the outlier removal.
 
 ## Performance
 ```{r}
-task_train = TaskClassif$new(id = "wines_outlierfree",  wwines.res[no_outliers_train_indices,], target = "quality", positive = "high")
+task_train = TaskClassif$new(id = "wines_outlierfree",  dtrain_of[,-8], target = "quality", positive = "high")
 
 learner = lrn("classif.log_reg", predict_type = "prob")
 
 cv5 = rsmp("cv", folds = 5)
 
-task_test = TaskClassif$new(id = "wines_outlierfree_test",  wwines.res[-no_outliers_train_indices,], target = "quality", positive = "high")
+task_test = TaskClassif$new(id = "wines_outlierfree_test",  dtest.res[,-8], target = "quality", positive = "high")
 
 learner$train(task_train)
 
