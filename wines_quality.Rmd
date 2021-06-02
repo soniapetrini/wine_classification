@@ -356,6 +356,8 @@ plot(lr_fit_of_1, which = 4, id.n = 1)
 ```
 
 ## Outliers free model
+
+Now we build a new model which will have outlier free data as training data.
 ```{r}
 #fitting on outlier free data
 lr_fit_outlierfree <- glm(quality ~., data =  dtrain_of[,-8],family=binomial(link='logit'))
@@ -368,6 +370,8 @@ exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
 ```
 
 ### Performance
+
+As always, it is useful to know if the processing we do improves our model: here we start producing performance measures.
 ```{r}
 task_train = TaskClassif$new(id = "wines_outlierfree",  dtrain_of[,-8], target = "quality", positive = "high")
 
@@ -392,12 +396,16 @@ cm_outlierfree
 
 ### Performance comparison
 
+In the following table we show the comparison between the newest model we produced and the base model from which we started.
 ```{r}
 data.frame("outlierfree_performance" = unlist(cm_outlierfree[-1]),"base_performance" = unlist(cm_base[-1]), 
            "improvement" = unlist(cm_outlierfree[-1])-unlist(cm_base[-1]))
 ```
+It seems like removing outliers could improve a bit the performance, thus we keep using the outlier-free model from now on.
 
 ### Estimated coefficients
+
+Let's see how much the coefficients change from model to model.
 ```{r}
 base <- data.frame(summary(lr_fit_res)$coefficient)
 no_outliers<- data.frame(summary(lr_fit_outlierfree)$coefficient)
@@ -406,10 +414,11 @@ variable<-c("(constant)",colnames(dtrain.res)[-c(7,8)])
 
 data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estimate-no_outliers$Estimate)
 ```
+We can notice that coefficients don't change too much when removing outliers. The only one which shifts a little bit more is the coefficient relative to the intercept, which has a -0.11 change. It could be that the outlier we removed affected the intercept coefficient estimate the most.
 
 # OPTIMAL THRESHOLD
 
-
+After removing outliers we are worried about the goodness of the threshold we have found previously, thus we test it again.
 ```{r}
 #we want to tweak the threshold of our classification: we analyze values from 0.3 to 0.6 with step 0.01
 thresholds <- seq(0.5,0.8,0.01)
@@ -446,9 +455,9 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 
 ```
 
-The threshold is not affected by the outlier removal.
+The threshold is not affected by the outlier removal, thus we keep using the same threshold as before.
 
-## Performance
+## Performance --> keep it? it is the same than before
 ```{r}
 task_train = TaskClassif$new(id = "wines_outlierfree",  dtrain_of[,-8], target = "quality", positive = "high")
 
@@ -472,7 +481,7 @@ cm_opt_th<- list("confusion" = opt_th_pred$confusion,
 cm_opt_th
 ```
 
-## Performance comparison
+## Performance comparison--> keep it? it is the same than before
 
 ```{r}
 data.frame("optimal_threshold_preformance" = unlist(cm_opt_th[-1]),
