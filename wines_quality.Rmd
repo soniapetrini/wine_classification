@@ -346,18 +346,22 @@ Checking the VIF after the variable "density" removal we can confirm that no oth
 plot(lr_fit_res, which = 4, id.n = 1)
 ```
 
+We remove the observation with a very large cook's distance (id = 4746), and inspect the plot again, to see the variablitiy of the remaining computed distances.
+
 ```{r}
 dtrain_of <- dtrain.res %>% filter(id != "4746")
 
 lr_fit_of_1 <- glm(quality ~., data =  dtrain_of[,-8],
           family=binomial(link='logit'))
 
-plot(lr_fit_of_1, which = 4, id.n = 1)
+plot(lr_fit_of_1, which = 4, id.n = 0)
 ```
+From this second plot we can see that there are some observations with a larger cook's distance with respect to the others, but they are within an acceptable range of variability, and we thus keep them.
+
 
 ## Outliers free model
 
-Now we build a new model which will have outlier free data as training data.
+Now we build a new model without the outlying observation.
 ```{r}
 #fitting on outlier free data
 lr_fit_outlierfree <- glm(quality ~., data =  dtrain_of[,-8],family=binomial(link='logit'))
@@ -414,7 +418,7 @@ variable<-c("(constant)",colnames(dtrain.res)[-c(7,8)])
 
 data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estimate-no_outliers$Estimate)
 ```
-We can notice that coefficients don't change too much when removing outliers. The only one which shifts a little bit more is the coefficient relative to the intercept, which has a -0.11 change. It could be that the outlier we removed affected the intercept coefficient estimate the most.
+We can notice that the coefficients don't change too much when removing outliers. The only one which shifts a little bit more is the coefficient relative to the intercept, which has a -0.11 change. It could be that the outlier we removed affected the intercept coefficient estimate the most.
 
 # OPTIMAL THRESHOLD
 
@@ -456,38 +460,6 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 ```
 
 The threshold is not affected by the outlier removal, thus we keep using the same threshold as before.
-
-## Performance --> keep it? it is the same than before
-```{r}
-task_train = TaskClassif$new(id = "wines_outlierfree",  dtrain_of[,-8], target = "quality", positive = "high")
-
-learner = lrn("classif.log_reg", predict_type = "prob")
-
-cv5 = rsmp("cv", folds = 5)
-
-task_test = TaskClassif$new(id = "wines_outlierfree_test",  dtest.res[,-8], target = "quality", positive = "high")
-
-learner$train(task_train)
-
-opt_th_pred <- learner$predict(task_test)
-# set optimal threshold
-opt_th_pred$set_threshold(th)
-
-cm_opt_th<- list("confusion" = opt_th_pred$confusion,
-          "accuracy" = opt_th_pred$score(measures = msr("classif.acc")),
-          "sensitivity"=opt_th_pred$score(measures = msr("classif.sensitivity")),
-          "specificity"=opt_th_pred$score(measures = msr("classif.specificity")))
-
-cm_opt_th
-```
-
-## Performance comparison--> keep it? it is the same than before
-
-```{r}
-data.frame("optimal_threshold_preformance" = unlist(cm_opt_th[-1]),
-  "outlierfree_performance" = unlist(cm_outlierfree[-1]),"base_performance" = unlist(cm_base[-1]), 
-           "improvement_from_last" = unlist(cm_opt_th[-1])-unlist(cm_outlierfree[-1]))
-```
 
 ################################################################################
 # BAGGING 
