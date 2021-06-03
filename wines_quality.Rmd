@@ -29,9 +29,10 @@ library(MASS)
 ################################################################################
 ## DATA
 
-The dataset **white_wines.csv** stores data about physicochemical properties of many wines which come from the north-west region, named Minho, of Portugal.
+The dataset **white_wines.csv** stores data about physicochemical properties of many white wines coming from the north-west region, named Minho, of Portugal.
 
-Each row refers to a wine and each column contains one of the physicochemical properties with respect to wines. Here we list the properties:
+Each row refers to a wine, while each column contains a physicochemical property. 
+Here we list the properties and their unit of measure:
 
 - fixed acidity (FA: g(tartaric acid)/dm^3)
 - volatile acidity (VA: g(acetic acid)/dm^3)
@@ -46,10 +47,11 @@ Each row refers to a wine and each column contains one of the physicochemical pr
 - alcohol (AL: %vol)
 - quality (from 0 to 10)
 
-Our aim will be to classify white wines according to their quality, labeling them as "low" if their quality score is from 0 to 5, and as "high" if the score is between 6 and 10.
+Our aim is to classify white wines according to their quality, labeling them as "low" if their quality score is from 0 to 5, and as "high" if the score is between 6 and 10.
 
 
 ## Loading the dataset
+We now inspect the variables, and transform them if necessary.
 
 ```{r, message=FALSE, warning = FALSE}
 wwines <- read.csv("winequality-white.csv", sep=";")
@@ -57,63 +59,78 @@ print("White wines")
 str(wwines)
 ```
 
-Now we inspect the variables we have and we transform them if necessary.
+All the features are numeric, including the target.
+We re-encode the target as a factor to make it binary, with two levels of quality.
 
-## Defining the target: high and low quality
+## Defining the target
 
 ```{r, message=FALSE, warning = FALSE}
 wwines$quality <- as.factor(case_when(wwines$quality <= 5 ~ "low",
                                       wwines$quality > 5 ~ "high"))
-wwines$quality <- factor(wwines$quality, levels = c("low","high"))
 table(wwines$quality)
 ```
 
+```{r}
+wwines["id"] <- rownames(wwines)
+```
 
 ## Data description
 
+Before proceeding with our analysis we perform some descriptive statistics, in order to both understand the relations within the variables, and to visualize their distributions.
+
 ### Heatmap
+
+First we plot the correlation matrix, in order to detect any strong relation among features which could lead to multicollinearity problems.
 ```{r}
-#compute on all features (without output variable which is at index 12)
-cors <- cor(wwines[-12])
+cors <- cor(wwines[-c(12,13)])
 corrplot(cors, type = "upper", 
          tl.col = "black", tl.srt = 45)
 
 ```
-We have to worry about two correlations: residual.sugar with density and density with alcohol.
+This plot highlights a strong correlation between density and two variables: residual.sugar and alcohol.
 
 ### Histograms
+
+To get an understanding of which variable should be excluded from the regression, we plot the histograms of the highly correlated variables identified above.
 ```{r}
-h1 <- ggplot(wwines, aes(residual.sugar, color = quality))+
+residual.sugar.plot <- ggplot(wwines, aes(residual.sugar, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
-h2 <- ggplot(wwines, aes(alcohol, color = quality))+
+alcohol.plot <- ggplot(wwines, aes(alcohol, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
-h3 <- ggplot(wwines, aes(density, color = quality))+
+density.plot <- ggplot(wwines, aes(density, color = quality))+
   geom_freqpoly(binwidth = 3, size = 1)
 
-grid.arrange(h1,h2,h3, ncol=1)
+
+grid.arrange(residual.sugar.plot,alcohol.plot,density.plot, ncol=1)
 
 ```
-We decide to remove density, as this will solve both the correlation issues, and we can see from the histograms below that the distribution of density does not depend on quality, while the shape of the residual.sugar and alcohol curves changes for low and high quality wines.
+We decide to remove density. In fact, we can observe that for each value of density there is no difference in the distribution of wines' quality, once we account for the numerosity of the two quality levels. On the other hand, the modal values for the other two variables differ for low and high quality wines, thus adding more useful information for the purpose of classification.
 
 ```{r}
 wwines$density <- NULL
 ```
 
+
 ### Correlation with target variable
+
+It is also useful to compute the correlations between the covariates and the target, in order to see if there are any particularly powerful features that would make the task too trivial.
 ```{r, warning=FALSE, message=FALSE}
-bicorrs <- sapply(wwines[,-11], function(x) round(biserial.cor(x,wwines$quality),2))
+wwines$quality <- factor(wwines$quality, levels = c("high","low"))
+bicorrs <- sapply(wwines[,-c(11,12)], function(x) round(biserial.cor(x,wwines$quality),2))
 data.frame(bicorrs) %>% arrange(abs(bicorrs))
 ```
-Here the correlations are displayed in ascending absolute value, and we can see that the variable showing the highest correlation with wines' quality is alcohol.
+Here the correlations are displayed in ascending absolute value, and we can observe that the variable showing the highest correlation with wines' quality is alcohol, but this is not a too strong correlation.
 The sign is positive, meaning that as alcohol increases the quality of wine also increases.
 
 ### Boxplots
+
+We now look at the distribution of all the explanatory variables, in order both to visualize those values which are far from the bulk of the data, and to get an understanding of the variables displaying the most divergent median values for low and high quality wines.
 ```{r, message=FALSE, warning = FALSE}
 summary(wwines)
 # melt the dataset
-wwines.m <- melt(wwines, id.var = "quality")
+wwines.m <- melt(wwines[,-12], id.var = "quality")
 
 # wrapped boxplots
 ggplot(data = wwines.m, aes(x=variable, y=value)) +
@@ -121,65 +138,292 @@ geom_boxplot(aes(fill=quality)) +
 facet_wrap( ~ variable, scales="free")
 ```
 
-
-These plots allow us to get a first impression about which variables will be significant for the regression.
-
 We can observe the following:
-- The features displaying the highest median difference between high and low quality wines are volatile.acidity, total.sulfur.dioxide, pH, alcohol.
+- The features displaying the highest median difference between high and low quality wines are volatile.acidity, total.sulfur.dioxide, pH, alcohol. The variables are candidates to be the significant ones in the regression framework.
 - There are some outlying values. We will deal with them in the section below.
 
-
-###########################################################################
-
-# LOGISTIC REGRESSION 
-
-## Divide the dataset in training and test
+## Data splitting
 
 ```{r}
 set.seed(42)
 train_indices<- createDataPartition(wwines$quality,p=0.7,list=FALSE)
+dtrain <- wwines[train_indices,]
+dtest <- wwines[-train_indices,]
 ```
 
-## Complete model: all variables are included
+###########################################################################
 
-Estimated coefficients and Odds Ratios.
-The baseline for the regression is "low", because positive: "high" 
+# VARIABLES SELECTION
 
-```{r, message=FALSE, warning=FALSE}
-lr_fit <- glm(quality ~., data =  wwines[train_indices,],
+## Forward Stepwise method
+```{r}
+library(leaps)
+regfit.fwd=regsubsets(quality~.,data=wwines[,-12],method="forward", nvmax=13)
+summary.fwd <- summary(regfit.fwd)
+
+plot(summary.fwd$bic,xlab="Number of Variables",ylab="bic")
+points(which.min(summary.fwd$bic),summary.fwd$bic[which.min(summary.fwd$bic)],pch=20,col="red")
+```
+Forward stepwise steps:
+1. inclusion of alcohol
+2. inclusion of volatile.acidity
+3. inclusion of residual.sugar
+4. inclusion of sulphates
+5. inclusion of fixed.acidity
+6. inclusion of free.sulfur.dioxide
+7. inclusion of total.sulfur.dioxide
+8. inclusion of pH
+9. inclusion of chlorides 
+10. inclusion of citric.acid
+
+Optimal number of variables: 6.
+
+```{r}
+plot(regfit.fwd,scale="bic")
+grid(nx=11,ny=10,col="red",lty = "solid")
+abline(h=10, col="yellow", lwd = 10)
+text(10.5,9, "Optimal model", col="yellow",cex = 0.8)
+```
+
+# LOGISTIC REGRESSION
+
+The logistic regression is now performed on the restricted model with the six selected variables:
+fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates, alcohol.
+
+With factor() we relevel the variable "quality" in order to set "low" as the baseline for the logistic regression.
+```{r}
+wwines$quality <- factor(wwines$quality, levels = c("low","high"))
+
+dtrain.res <- dtrain[,c(1,2,4,6,9,10,11,12)]
+dtest.res <- dtest[,c(1,2,4,6,9,10,11,12)]
+
+lr_fit_res <- glm(quality ~., data =  dtrain.res[,-8],
           family=binomial(link='logit'))
 
 # coefficients
-summary(lr_fit)
+summary(lr_fit_res)
 
 # odds ratios
-exp(cbind(OR = coef(lr_fit), confint(lr_fit)))
+exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
 ```
-Here we find these variable which are significant at 99% confidence level: ◊check values
-- Intercept 99.97%: this value corresponds to the increase in the odds of having a low quality wine when all the explanatory variables are set at 0.
-- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.87% decrease in the odds of having a low quality wine.
-- residual.sugar: a unitary increase in volatile acidity will lead to a 7.44% increase in the odds of having a low quality wine.
-- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 1.36% increase in the odds of having a low quality wine.
-- alcohol: a unitary increase in volatile acidity will lead to a 186.5% increase in the odds of having a low quality wine.
+The following variables are those significant at a 99% confidence level:
+- Intercept: the value 440232.6% corresponds to the increase in the odds of having a high quality wine when all the explanatory variables are set to 0.
+- fixed.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 23.13% increase in the odds of having a high quality wine.
+- volatile.acidity: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 102318.1% increase in the odds of having a high quality wine.
+- residual.sugar: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 6.76% decrease in the odds of having a high quality wine.
+- free.sulfur.dioxide: a unitary increase (1 mg/dm^3) in volatile acidity will lead to a 0.62% decrease in the odds of having a high quality wine.
+- alcohol: a unitary increase (percentage) in volatile acidity will lead to a 66.04% decrease in the odds of having a high quality wine.
 
-We find these variable which are significant at 95% confidence level:
-- fixed.acidity: a unitary increase in volatile acidity will lead to a 16.68% decrease in the odds of having a low quality wine.
-- sulphates: a unitary increase in volatile acidity will lead to a 283.46% increase in the odds of having a low quality wine.
-
-We find this variable which is significant at 90% confidence level:
-- total.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.32% decrease in the odds of having a low quality wine.
+The following variable is significant at a 95% confidence level:
+- sulphates: a unitary increase (1 g/dm^3) in volatile acidity will lead to a 73.22% decrease in the odds of having a high quality wine.
 
 
-### Finding the optimal threshold for discriminating high quality wines from low quality wines
+## Optimal threshold
+
+In order to get the best possible performance, we performed threshold optimization exploiting the mlr3 package. 
+Since the choice of the threshold strictly depends on the aim of the analysis, which in our case is to build a predictor which would have the best behaviour on new different data, we looked for a threshold which could guarantee an equilibrium between the two types of errors.
 
 ```{r}
 #here we use mlr3 package
-#defining our task: classification on wines with quality as response variable and low quality as baseline
-task_train = TaskClassif$new(id = "wines",  wwines[train_indices,], target = "quality", positive = "high")
-#defining the learner which will perform the training procedure on our model
+#defining our task: classification of training data
+task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
+#defining the type of learner: logistic regression
 learner_train = lrn("classif.log_reg", predict_type = "prob")
-#defining how we want to perform cross validation (setting number of folds to 5)
+#defining the resampling method
 cv5 = rsmp("cv", folds = 5)
+#defing the search space
+thresholds <- seq(0.5,0.8,0.01)
+
+#collecting cross-validated performances for different thresholds
+measures_list <- rep(list(list()), 3)
+
+for (thresh in thresholds) {
+    res_cv = resample(task_train, learner_train, cv5, store_models = TRUE)
+    #combined prediction of all individual resampling iterations
+    prediction <- res_cv$prediction()
+    prediction$set_threshold(thresh)
+    #computing the scores
+    scores <- prediction$score(measures = c(msr("classif.acc"),msr("classif.sensitivity"),msr("classif.specificity")))
+    coefficients <- (unname(scores))
+    measures_list <- mapply(append, measures_list, coefficients, SIMPLIFY = FALSE)
+}
+
+measures <- data.frame(thresholds,
+                       "accuracy" = unlist(measures_list[[1]]), 
+                       "sensitivity" = unlist(measures_list[[2]]),
+                       "specificity" = unlist(measures_list[[3]]))
+
+#finding optimal point: intersection
+equivalent <- function(x, y, tol = 0.02) abs(x - y) < tol
+intersection_indices <- which(equivalent(measures$sensitivity,measures$specificity))
+th <- mean(thresholds[intersection_indices]) 
+
+melt_measures <- melt(measures, id.vars="thresholds")
+ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variable )) + 
+  geom_line() +
+  geom_vline(xintercept = th,linetype = "dotted") +
+  geom_label(aes(x = 0.67, y = 0.5, label = as.character(mean(thresholds[intersection_indices]))))
+
+```
+The optimal threshold for our aim is 0.65.
+This thresholds meets our expectations, as the equilibrium point corresponds to a value higher than 0.5. 
+This higher threshold compensates for the higher a priori probability of labelling a wine as high quality (low: 1640, high: 3258).
+
+## Model's test performance 
+
+
+```{r}
+task_train = TaskClassif$new(id = "wines",  dtrain.res[,-8], target = "quality", positive = "high")
+task_test = TaskClassif$new(id = "wines_test",  dtest.res[,-8], target = "quality", positive = "high")
+
+learner = lrn("classif.log_reg", predict_type = "prob")
+cv5 = rsmp("cv", folds = 5)
+
+learner$train(task_train) # training on train set
+base_pred <- learner$predict(task_test) # predicting on test set
+base_pred$set_threshold(th)
+
+# performance
+cm_base <- list("confusion" = base_pred$confusion,
+          "accuracy" = base_pred$score(measures = msr("classif.acc")),
+          "sensitivity"=base_pred$score(measures = msr("classif.sensitivity")),
+          "specificity"=base_pred$score(measures = msr("classif.specificity")))
+cm_base
+```
+
+### Full/Restricted Performance comparison 
+
+In order to see how the model's performance is affected by the dimensionality reduction, we compute the predictions for both the restricted and the full model and we compare the values of accuracy, sensitivity, and specificity.
+By removing 5 out of 11 explanatory variables we are trying to avoid overfitting, thus creating a more stable model with a lower variance; of course, we expect the performance to be slighlty worse, as we are introducing some bias.
+
+
+```{r, warning=FALSE}
+#running the full model
+lr_fit <- glm(quality ~., data =  dtrain[,-12],
+          family=binomial(link='logit'))
+
+#full model performance
+unrestr_probs <- predict(lr_fit,  dtest[,-12], type="response")
+unrestr_preds <- ifelse(unrestr_probs > th,"high","low")
+unrestr_cm <- confusionMatrix(factor(unrestr_preds),
+                         dtest$quality,
+                        positive = "high"
+                        )
+unrestr_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
+
+#restricted model performance
+restr_probs <- predict(lr_fit_res,  dtest.res[,-8], type="response")
+restr_preds <- ifelse(restr_probs > th,"high","low")
+restr_cm <- confusionMatrix(factor(restr_preds),                         dtest$quality,
+                        positive = "high"
+                        )
+restr_performance <- list(restr_cm$overall[1], restr_cm$byClass[1], restr_cm$byClass[2])
+
+
+data.frame("unrestr_performance" =unlist(unrestr_performance),"restr_performance" = unlist(restr_performance), 
+           "difference" = unlist(restr_performance)-unlist(unrestr_performance))
+```
+As expected there is a slight worsening in the model's prediction accuracy, but this increase in bias is negligible with respect to the decrease in variance obtained with the simpler model.
+
+
+## Model diagnostics
+
+### Multicollinearity 
+Variance inflation factor measures how much the behavior (variance) of an independent variable is influenced, or inflated, by its interaction/correlation with the other independent variables.
+
+
+```{r}
+a <- vif(lr_fit_res)
+sqrt(vif(lr_fit_res))>2
+```
+
+Checking the VIF after the variable "density" removal we can confirm that no other variable is influenced by the others.
+
+### Detecting outliers
+
+```{r warning=FALSE}
+#see Cook's distance
+plot(lr_fit_res, which = 4, id.n = 1)
+```
+
+We remove the observation with a very large cook's distance (id = 4746), and inspect the plot again, to see the variablitiy of the remaining computed distances.
+
+```{r}
+dtrain_of <- dtrain.res %>% filter(id != "4746")
+
+lr_fit_of_1 <- glm(quality ~., data =  dtrain_of[,-8],
+          family=binomial(link='logit'))
+
+plot(lr_fit_of_1, which = 4, id.n = 0)
+```
+From this second plot we can see that there are some observations with a larger cook's distance with respect to the others, but they are within an acceptable range of variability, and we thus keep them.
+
+
+## Outliers free model
+
+Now we build a new model without the outlying observation.
+```{r}
+#fitting on outlier free data
+lr_fit_outlierfree <- glm(quality ~., data =  dtrain_of[,-8],family=binomial(link='logit'))
+
+# coefficients
+summary(lr_fit_outlierfree)
+
+# odds ratios
+exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
+```
+
+### Performance
+
+As always, it is useful to know if the processing we do improves our model: here we start producing performance measures.
+```{r}
+task_train = TaskClassif$new(id = "wines_outlierfree",  dtrain_of[,-8], target = "quality", positive = "high")
+
+learner = lrn("classif.log_reg", predict_type = "prob")
+
+cv5 = rsmp("cv", folds = 5)
+
+task_test = TaskClassif$new(id = "wines_outlierfree_test",  dtest.res[,-8], target = "quality", positive = "high")
+
+learner$train(task_train)
+
+outlierfree_pred <- learner$predict(task_test)
+# set optimal threshold
+outlierfree_pred$set_threshold(th)
+cm_outlierfree <- list("confusion" = outlierfree_pred$confusion,
+          "accuracy" = outlierfree_pred$score(measures = msr("classif.acc")),
+          "sensitivity"=outlierfree_pred$score(measures = msr("classif.sensitivity")),
+          "specificity"=outlierfree_pred$score(measures = msr("classif.specificity")))
+
+cm_outlierfree
+```
+
+### Performance comparison
+
+In the following table we show the comparison between the newest model we produced and the base model from which we started.
+```{r}
+data.frame("outlierfree_performance" = unlist(cm_outlierfree[-1]),"base_performance" = unlist(cm_base[-1]), 
+           "improvement" = unlist(cm_outlierfree[-1])-unlist(cm_base[-1]))
+```
+It seems like removing outliers could improve a bit the performance, thus we keep using the outlier-free model from now on.
+
+### Estimated coefficients
+
+Let's see how much the coefficients change from model to model.
+```{r}
+base <- data.frame(summary(lr_fit_res)$coefficient)
+no_outliers<- data.frame(summary(lr_fit_outlierfree)$coefficient)
+
+variable<-c("(constant)",colnames(dtrain.res)[-c(7,8)])
+
+data.frame(variable,base$Estimate,no_outliers$Estimate, "difference"=base$Estimate-no_outliers$Estimate)
+```
+We can notice that the coefficients don't change too much when removing outliers. The only one which shifts a little bit more is the coefficient relative to the intercept, which has a -0.11 change. It could be that the outlier we removed affected the intercept coefficient estimate the most.
+
+# OPTIMAL THRESHOLD
+
+After removing outliers we are worried about the goodness of the threshold we have found previously, thus we test it again.
+```{r}
 #we want to tweak the threshold of our classification: we analyze values from 0.3 to 0.6 with step 0.01
 thresholds <- seq(0.5,0.8,0.01)
 
@@ -187,7 +431,7 @@ thresholds <- seq(0.5,0.8,0.01)
 measures_list <- rep(list(list()), 3)
 
 for (thresh in thresholds) {
-    res_cv = resample(task_train, learner_train, cv5, store_models = TRUE)
+    res_cv = resample(task_train, learner, cv5, store_models = TRUE)
     #combined prediction of all individual resampling iterations
     prediction <- res_cv$prediction()
     prediction$set_threshold(thresh)
@@ -215,244 +459,28 @@ ggplot(melt_measures, aes( x=thresholds, y=value, colour=variable, group=variabl
 
 ```
 
-Optimal threshold is 0.35.
-Since the choice of the threshold depends on the aim of the analysis, we decided to use the level which corresponds to the intersection between accuracy, specificity, and sensitivity, as our aim is to build a predictor which would havee the best behaviour on different data.◊
-
-### Complete model test performance 
-```{r}
-# define new task for test set
-task_test = TaskClassif$new(id = "wines_test",  wwines[-train_indices,], target = "quality", positive = "high")
-# train on train task
-learner_train$train(task_train)
-# predict on test task
-pred <- learner_train$predict(task_test)
-# set optimal threshold
-pred$set_threshold(th)
-# performance
-cm <- list("confusion" = pred$confusion,
-          "accuracy" = pred$score(measures = msr("classif.acc")),
-          "sensitivity"=pred$score(measures = msr("classif.sensitivity")),
-          "specificity"=pred$score(measures = msr("classif.specificity")))
-cm
-
-```
-
-## Model selection
-◊ get a better viz
-### vif
-```{r}
-a <- vif(lr_fit)
-#b <- data.frame(a,colnames(wwines)[-12])  %>% mutate(sqrt = sqrt(a)) %>% filter(sqrt > 2)
-sqrt(vif(lr_fit))>2 # residual.sugar, density, alcohol
-```
-
-Variance inflation factor measures how much the behavior (variance) of an independent variable is influenced, or inflated, by its interaction/correlation with the other independent variables.
-
-Residual sugar, density and alcohol are the most influenced by their interactions with other independent variables.
-
-
-### Forward Stepwise method
-```{r}
-library(leaps)
-regfit.fwd=regsubsets(quality~.,data=wwines,method="forward", nvmax=13)
-summary.fwd <- summary(regfit.fwd)
-
-plot(summary.fwd$bic,xlab="Number of Variables",ylab="bic")
-points(which.min(summary.fwd$bic),summary.fwd$bic[which.min(summary.fwd$bic)],pch=20,col="red")
-```
-Forward stepwise steps:
-1. inclusion of alcohol
-2. inclusion of volatile.acidity
-3. inclusion of residual.sugar
-4. inclusion of sulphates
-5. inclusion of density
-6. inclusion of pH
-7. inclusion of free.sulfur.dioxide
-8. inclusion of total.sulfur.dioxide
-9. inclusion of fixed.acidity
-10. inclusion of citric.acid
-11. inclusion of chlorides
-
-```{r}
-plot(regfit.fwd,scale="bic")
-grid(nx=11,ny=10,col="red",lty = "solid")
-abline(h=10, col="yellow", lwd = 10)
-text(10.5,9, "Optimal model", col="yellow",cex = 0.8)
-```
-
-
-## Restricted model: only 6 variables
-
-Only including: fixed.acidity, volatile.acidity, residual.sugar, free.sulfur.dioxide, sulphates, alcohol.
-```{r}
-wwines.res <- wwines[,c(1,2,4,6,9,10,11)]
-lr_fit_res <- glm(quality ~., data =  wwines.res[train_indices,],
-          family=binomial(link='logit'))
-
-# coefficients
-summary(lr_fit_res)
-
-# odds ratios
-exp(cbind(OR = coef(lr_fit_res), confint(lr_fit_res)))
-```
-Here we find these variable which are significant at 99% confidence level: ◊check values
-- (Intercept)
-- volatile.acidity: a unitary increase in volatile acidity will lead to a 99.86127% decrease in the odds of having a low quality wine.
-- residual.sugar: a unitary increase in volatile acidity will lead to a 17.2293% increase in the odds of having a low quality wine.
-- free.sulfur.dioxide: a unitary increase in volatile acidity will lead to a 0.9025% increase in the odds of having a low quality wine.
-- density: a unitary increase in volatile acidity will lead to a 100% decrease in the odds of having a low quality wine.
-- sulphates: a unitary increase in volatile acidity will lead to a 377.0417% increase in the odds of having a low quality wine.
-- alcohol: a unitary increase in volatile acidity will lead to a 124.092% increase in the odds of having a low quality wine.
-
-We find these variable which are significant at 90% confidence level:
-- pH: a unitary increase in volatile acidity will lead to a 125.6878% increase in the odds of having a low quality wine.
-
-## Test performances of restricted and unrestricted models
-```{r, warning=FALSE}
-#unrestricted model performance
-unrestr_probs <- predict(lr_fit,  wwines[-train_indices,], type="response")
-unrestr_preds <- ifelse(unrestr_probs > th,"high","low")
-unrestr_cm <- confusionMatrix(factor(unrestr_preds),
-                         wwines[-train_indices,]$quality,
-                        positive = "high"
-                        )
-unrestr_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
-
-#restricted model performance
-restr_probs <- predict(lr_fit_res,  wwines.res[-train_indices,], type="response")
-restr_preds <- ifelse(restr_probs > th,"high","low")
-restr_cm <- confusionMatrix(factor(restr_preds),                         wwines[-train_indices,]$quality,
-                        positive = "high"
-                        )
-restr_performance <- list(restr_cm$overall[1], restr_cm$byClass[1], restr_cm$byClass[2])
-
-
-data.frame("unrestr_performance" =unlist(unrestr_performance),"restr_performance" = unlist(restr_performance), 
-           "improvement" = unlist(restr_performance)-unlist(unrestr_performance))
-```
-There is a little improvement in the performance of the restricted model.
-
-
-## Detecting outliers (first)
-```{r, warning=FALSE}
-#see Cook's distance
-influenceIndexPlot(lr_fit, id.n=10)  # 2782, 4481
-#using dffits
-df_fits<-dffits(lr_fit)
-threshold<-(2*(11+1)/sqrt(3429-11-1))  
-which(abs(df_fits)>threshold) # 2782, 1956
-outliers <- c(1956,2782,4481)
- wwines[train_indices,]["outlier"] <- ifelse(rownames( wwines[train_indices,]) %in% outliers,0,1)
-residualPlots(lr_fit, id = TRUE,  col = as.factor( wwines[train_indices,]$outlier))
-```
-From the first plot we identify as outliers instances number 2782 and 4481 (see Cook's distance plot). These instances are outliers for the independent variables distributions.
-
-2782 and 1956 are outliers for the distribution of the response variable (dffits).
-
-## Detecting outliers using unrestricted model (second)
-```{r, warning=FALSE}
-
-#dffits threshold
-threshold<-(2*(ncol( wwines[train_indices,])+1)/sqrt(nrow(wwines[train_indices,])-ncol(wwines[train_indices,])-1))  
-d <- dffits(lr_fit)
-#another way to get cook's distance
-#cooks distance threshold: https://www.scikit-yb.org/en/latest/api/regressor/influence.html#:~:text=Because%20of%20this%2C%20Cook's%20Distance,that%20is%20above%20that%20threshold.
-plot(lr_fit, which = 4, id.n = 3)
-outliers <- 
-  augment(lr_fit) %>%
-  mutate(df = unname(dffits(lr_fit)))%>%
-  filter(.cooksd > 4/nrow( wwines[train_indices,]) |abs(df)>threshold)
-#%>%  select(.rownames)
-
-wwines[train_indices,]["outlier"] <- ifelse(rownames(wwines[train_indices,]) %in% outliers$.rownames,0,1)
-residualPlots(lr_fit, id = TRUE, col = as.factor( wwines[train_indices,]$outlier), ask = FALSE)
-```
-
-
-## Outliers free model (first)
-```{r}
-wwines[train_indices,]$outlier<- NULL
-wwines[train_indices,]$outlierfree <-  wwines[train_indices,][-outliers,]
-lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]$outlierfree,
-                          family=binomial(link='logit'))
-
-# coefficients
-summary(lr_fit_outlierfree)
-
-# odds ratios
-exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
-```
-
-## Outliers free model (second)
-```{r}
-wwines[train_indices,]$outlier<- NULL
-wwines[train_indices,]$outlierfree <-  wwines[train_indices,][-as.numeric(outliers$.rownames),]
-lr_fit_outlierfree <- glm(quality ~., data =  wwines[train_indices,]$outlierfree,
-                          family=binomial(link='logit'))
-
-# coefficients
-summary(lr_fit_outlierfree)
-
-# odds ratios
-exp(cbind(OR = coef(lr_fit_outlierfree), confint(lr_fit_outlierfree)))
-```
-
-## With and without outliers
-
-### Estimated coefficients
-```{r}
-outliers <- data.frame(summary(lr_fit)$coefficient)
-no_outliers<- data.frame(summary(lr_fit_outlierfree)$coefficient)
-
-variable<-c("(constant)",colnames(wwines)[-12])
-
-data.frame(variable,outliers$Estimate,no_outliers$Estimate, "difference"=outliers$Estimate-no_outliers$Estimate)
-```
-
-### Performance on test
-```{r}
-# outliers free
-lr_prob_of <- predict(lr_fit_outlierfree,  wwines[-train_indices,], type="response")
-lr_pred_of <- ifelse(lr_prob_of > th,"high","low")
-cm_of <- confusionMatrix(as.factor(lr_pred_of),
-                         wwines[-train_indices,]$quality,
-                        positive = "high"
-                        )
-
-out_performance <- list(unrestr_cm$overall[1], unrestr_cm$byClass[1], unrestr_cm$byClass[2])
-outfree_performance <- list(cm_of$overall[1], cm_of$byClass[1], cm_of$byClass[2])
-
-data.frame("outliers_performance" = unlist(out_performance),"outliers_free_performance" = unlist(outfree_performance), 
-           "improvement" = unlist(outfree_performance)-unlist(out_performance))
-```
-
-# Outliers free ROC Curve
-
-```{r, message=FALSE, warning=FALSE}
-test_roc = roc( wwines[-train_indices,]$quality ~ lr_prob_of, plot = TRUE, print.auc = TRUE)
-
-```
+The threshold is not affected by the outlier removal, thus we keep using the same threshold as before.
 
 ################################################################################
 # BAGGING 
 ```{r}
-n <- seq(nrow( wwines[train_indices,]))
+n <- seq(nrow( dtrain))
 set.seed(1)
-S1 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S1 <- sample(n, nrow( dtrain), replace = TRUE)
 set.seed(2)
-S2 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S2 <- sample(n, nrow( dtrain), replace = TRUE)
 set.seed(3)
-S3 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S3 <- sample(n, nrow( dtrain), replace = TRUE)
 set.seed(4)
-S4 <- sample(n, nrow( wwines[train_indices,]), replace = TRUE)
+S4 <- sample(n, nrow( dtrain), replace = TRUE)
 lr_b <- function(i){
       lr_f <- glm(quality ~ fixed.acidity+volatile.acidity+residual.sugar+free.sulfur.dioxide+sulphates+alcohol, 
-                  data =  wwines[train_indices,][i, ],family=binomial(link='logit'))
-      lr_prob <- predict(lr_f, wwines[train_indices,][i,], type="response")
+                  data =  dtrain[i, ],family=binomial(link='logit'))
+      lr_prob <- predict(lr_f, dtrain[i,], type="response")
       lr_pred <- ifelse(lr_prob > th,"high","low")
       cm <- confusionMatrix(
                 as.factor(lr_pred),
-                 wwines[train_indices,][i,]$quality,
+                 dtrain[i,]$quality,
                 positive = "high"
                 )
       a <- cm$overall[[1]]
@@ -461,6 +489,7 @@ lr_b <- function(i){
 aggregate = (lr_b(S1) +lr_b(S2) + lr_b(S3) + lr_b(S4))/4
 round(aggregate,4)
 ```
+{output will be ROC curve}
 
 ################################################################################
 
